@@ -430,19 +430,6 @@ def charts_block(df):
         st.plotly_chart(fig1, use_container_width=True)
 
 
-    # --- (ELIMINADO) Estado de Pago por Monto (dona)
-
-    # --- Top 10 Proveedores por Monto (barras)
-    if "Provedor" in base.columns and base["Provedor"].notna().any():
-        g_prov = (base.groupby("Provedor", as_index=False)["Monto"]
-                        .sum().sort_values("Monto", ascending=False).head(10))
-        if len(g_prov):
-            fig3 = px.bar(g_prov, x="Monto", y="Provedor", orientation="h",
-                          color="Monto", color_continuous_scale="Blues",
-                          title="Proveedores por Monto")
-            fig3.update_layout(yaxis={"categoryorder": "total ascending"})
-            fig3.update_xaxes(separatethousands=True)
-            st.plotly_chart(fig3, use_container_width=True)
 
     # --- Series temporales (si hay Fecha entrega)
     if "Fecha entrega" in base.columns and base["Fecha entrega"].notna().any():

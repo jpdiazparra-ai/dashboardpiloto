@@ -1102,19 +1102,31 @@ st.dataframe(
     }
 )
 
-# --- KPIs para las chips (evita NameError) ---
-total_pf_num = float(agg["precio_final_total"].sum() or 0.0)
-prom_pct     = float(agg["%_esc"].dropna().mean() or 0.0)
-
-# -------- Resumen en chips --------
-st.markdown(
-    f"<div style='display:flex;gap:8px;margin-top:10px'>"
-    f"<span class='chip chip--ok'>Precio final total: {_money_fmt(total_pf_num)}</span>"
-    f"<span class='chip'>Promedio %_esc: {prom_pct:.2f}%</span>"
-    f"</div>", unsafe_allow_html=True
+# --- Chips por Factor (Necesario vs Evitable) usando Monto_num ---
+_tmp = df_cost.copy()
+_tmp["__fac"] = (
+    _tmp["Factor de costo"].fillna("").astype(str).str.strip().str.lower()
+)
+_tmp["__NE"] = np.where(
+    _tmp["__fac"].str.contains("necesar"), "Necesario",
+    np.where(_tmp["__fac"].str.contains("evit"), "Evitable", "Otro")
 )
 
-st.markdown("</div>", unsafe_allow_html=True)
+tot_nec = float(_tmp.loc[_tmp["__NE"]=="Necesario", "Monto_num"].sum() or 0.0)
+tot_evi = float(_tmp.loc[_tmp["__NE"]=="Evitable", "Monto_num"].sum() or 0.0)
+tot_all = tot_nec + tot_evi
+
+pct_nec = (tot_nec / tot_all * 100.0) if tot_all > 0 else 0.0
+pct_evi = (tot_evi / tot_all * 100.0) if tot_all > 0 else 0.0
+
+st.markdown(
+    f"<div style='display:flex;gap:8px;margin-top:10px'>"
+    f"<span class='chip chip--ok'>Necesario: {_money_fmt(tot_nec)} · {pct_nec:.2f}%</span>"
+    f"<span class='chip'>Evitable: {_money_fmt(tot_evi)} · {pct_evi:.2f}%</span>"
+    f"</div>",
+    unsafe_allow_html=True
+)
+
 
 # ===============================
 # (Reemplazo) — Factor × Categoría (S/M/I+D)

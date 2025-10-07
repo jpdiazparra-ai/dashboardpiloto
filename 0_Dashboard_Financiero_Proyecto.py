@@ -171,7 +171,7 @@ def build_filters():
     df = load_csv(src_url)
 
     # No se aplican filtros (solo retorna el DataFrame)
-    dmin, dmax = dt.date(2024, 1, 1), dt.date.today()
+    dmin, dmax = dt.date(2020, 1, 1), dt.date(2026, 12, 31)
     etapa_sel, estado_sel, prov_sel, query_txt = [], [], [], ""
 
     return df, (etapa_sel, estado_sel, prov_sel, (dmin, dmax), query_txt)
@@ -186,11 +186,44 @@ def apply_filters(df, etapa_sel, estado_sel, prov_sel, date_range, query_txt):
 
     mask = pd.Series(True, index=df.index)
 
+    # Etapa
     if etapa_sel:
         mask &= df.get("Etapa", pd.Series(index=df.index)).isin(etapa_sel)
 
+    # Estado de pago
     if estado_sel and "Estado de pago" in df.columns:
         mask &= df["Estado de pago"].isin(estado_sel)
+
+    # Proveedor (soporta Provedor/Proveedor)
+    prov_col = "Provedor" if "Provedor" in df.columns else ("Proveedor" if "Proveedor" in df.columns else None)
+    if prov_col and prov_sel:
+        mask &= df[prov_col].isin(prov_sel)
+
+    # ✅ FECHAS — NO excluir filas sin fecha:
+    # Si tiene alguna fecha dentro del rango → se queda.
+    # Si no tiene fecha → también se queda.
+    date_cols = [c for c in ["Fecha inicio","Fecha fin","Fecha entrega"] if c in df.columns]
+    if date_cols:
+        fmask = pd.Series(True, index=df.index)
+        for c in date_cols:
+            col = pd.to_datetime(df[c], errors="coerce")
+            inrng = col.between(d1, d2, inclusive="both")
+            # Mantener filas sin fecha (col.isna()) o en rango
+            fmask &= (~col.notna()) | inrng
+        mask &= fmask
+
+    # Texto
+    if query_txt:
+        q = str(query_txt).lower()
+        txt_mask = (
+            df.get("Descripciónn", pd.Series("", index=df.index)).astype(str).str.lower().str.contains(q, na=False) |
+            df.get("item",         pd.Series("", index=df.index)).astype(str).str.lower().str.contains(q, na=False) |
+            df.get("Sub-item",     pd.Series("", index=df.index)).astype(str).str.lower().str.contains(q, na=False)
+        )
+        mask &= txt_mask
+
+    return df[mask].copy()
+
 
     # Soporte “Provedor” o “Proveedor”
     prov_col = "Provedor" if "Provedor" in df.columns else ("Proveedor" if "Proveedor" in df.columns else None)

@@ -432,8 +432,11 @@ with st.sidebar.expander("Curva de Potencia (CSV)", expanded=True):
         help="Encabezados: v_m_s y P_KW (kW) o P_W (W). Si viene P_W, se convierte a P_KW automáticamente."
     )
     pc_file = st.file_uploader("o sube CSV local (opcional)", type=["csv"], key="pc")
-    with st.expander("Descargar plantilla curva de potencia", expanded=False):
-        download_button_from_text("📥 Descargar plantilla (power_curve.csv)", TEMPLATE_POWER_CURVE, "power_curve.csv")
+
+    # 👇 en vez de otro expander, deja el botón directo o un container
+    st.caption("Plantilla de curva de potencia (CSV):")
+    download_button_from_text("📥 Descargar plantilla (power_curve.csv)", TEMPLATE_POWER_CURVE, "power_curve.csv")
+
 
 # Turbina
 with st.sidebar.expander("Turbina", expanded=False):
@@ -490,15 +493,24 @@ with st.sidebar.expander("Propuesta técnica (objetivos)", expanded=False):
 # Entradas específicas por modo
 if modo == "Series (CSV)":
     with st.sidebar.expander("Series de viento (CSV)", expanded=True):
-        wind_url = st.text_input(
-            "URL CSV (Google Sheets publicado)",
-            value=WIND_SERIES_URL_DEFAULT,
-            help="CSV con columnas: timestamp,v_mean_m_s,(v_max_m_s),(v_std_m_s),(direction_deg),(air_temp_C),(pressure_hPa)"
+       wind_url = st.text_input(
+           "URL CSV (Google Sheets publicado)",
+           value=WIND_SERIES_URL_DEFAULT,
+           help="CSV con columnas: timestamp,v_mean_m_s,(v_max_m_s),(v_std_m_s),(direction_deg),(air_temp_C),(pressure_hPa)"
+      )
+
+       wind_file = st.file_uploader("o sube CSV local (opcional)", type=["csv"], key="wind_csv")
+
+       # 👇 Botón de descarga directo (sin expander interno)
+       st.caption("Plantilla de series de viento (CSV):")
+       download_button_from_text(
+           "📥 Descargar plantilla (wind_series.csv)",
+           TEMPLATE_WIND_SERIES,
+           "wind_series.csv"
         )
-        wind_file = st.file_uploader("o sube CSV local (opcional)", type=["csv"], key="wind_csv")
-        with st.expander("Descargar plantilla de series de viento", expanded=False):
-            download_button_from_text("📥 Descargar plantilla (wind_series.csv)", TEMPLATE_WIND_SERIES, "wind_series.csv")
+
     k_weibull = c_weibull = None
+
 else:
     wind_file = None
     wind_url = ""

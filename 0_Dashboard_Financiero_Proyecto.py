@@ -153,71 +153,69 @@ def load_csv(source) -> pd.DataFrame:
     return df
 
 def build_filters():
-    st.sidebar.header("⚙️ Fuente y Filtros")
+    st.sidebar.header("⚙️ Fuente de datos")
 
-    # Botón para limpiar caché y recargar datos desde Drive/URL
+    # Campo para ingresar o pegar la URL de tu Google Sheet (publicado como CSV)
+    src_url = st.sidebar.text_input(
+        "URL CSV (Google Sheets publicado)",
+        DEFAULT_CSV_URL,
+        help="Pega aquí la URL publicada como CSV desde Google Sheets."
+    )
+
+    # Botón para refrescar caché y recargar datos
     if st.sidebar.button("🔁 Actualizar datos (Drive/URL)"):
         st.cache_data.clear()
         _safe_rerun()
 
-    modo = st.sidebar.radio("Fuente de datos", ["URL CSV", "Subir CSV"], index=0)
-    if modo == "URL CSV":
-        url = st.sidebar.text_input("URL CSV (Google Sheets publicado)", value=DEFAULT_CSV_URL)
-        source = url
-    else:
-        up = st.sidebar.file_uploader("Sube CSV", type=["csv"])
-        source = up
+    # Carga los datos directamente desde la URL
+    df = load_csv(src_url)
 
-    if not source:
-        st.info("Indica una URL o sube un CSV para comenzar.")
-        st.stop()
+    # No se aplican filtros (solo retorna el DataFrame)
+    dmin, dmax = dt.date(2024, 1, 1), dt.date.today()
+    etapa_sel, estado_sel, prov_sel, query_txt = [], [], [], ""
 
-    df = load_csv(source)
+    return df, (etapa_sel, estado_sel, prov_sel, (dmin, dmax), query_txt)
 
-    etapas  = sorted([e for e in df["Etapa"].dropna().unique()])
-    estados = sorted([e for e in df["Estado de pago"].dropna().unique()])
-    provs   = sorted([e for e in df["Provedor"].dropna().unique()])
 
-    etapa_sel  = st.sidebar.multiselect("Etapa", etapas, default=etapas)
-    estado_sel = st.sidebar.multiselect("Estado de pago", estados, default=estados if estados else [])
-    prov_sel   = st.sidebar.multiselect("Proveedor", provs, default=provs if provs else [])
 
-    fechas_candidatas = pd.concat([
-        df["Fecha inicio"].dropna(),
-        df["Fecha fin"].dropna(),
-        df["Fecha entrega"].dropna()
-    ], ignore_index=True) if any(col in df.columns for col in ["Fecha inicio","Fecha fin","Fecha entrega"]) else pd.Series([], dtype="datetime64[ns]")
-
-    if len(fechas_candidatas):
-        fmin = fechas_candidatas.min().date()
-        fmax = fechas_candidatas.max().date()
-    else:
-        fmin = dt.date(dt.date.today().year, 1, 1)
-        fmax = dt.date.today()
-
-    rango = st.sidebar.date_input("Rango de fechas (inicio/fin/entrega)", (fmin, fmax))
-    if isinstance(rango, tuple) and len(rango) == 2:
-        d1, d2 = rango
-    else:
-        d1, d2 = fmin, fmax
-
-    query_txt = st.sidebar.text_input("Buscar texto (Descripción, item, Sub-item)", value="").strip()
-
-    return df, (etapa_sel, estado_sel, prov_sel, (d1, d2), query_txt)
 
 def apply_filters(df, etapa_sel, estado_sel, prov_sel, date_range, query_txt):
     d1, d2 = date_range
+    d1 = pd.to_datetime(d1)
+    d2 = pd.to_datetime(d2) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)  # incluir fin del día
+
     mask = pd.Series(True, index=df.index)
 
     if etapa_sel:
-        mask &= df["Etapa"].isin(etapa_sel)
+        mask &= df.get("Etapa", pd.Series(index=df.index)).isin(etapa_sel)
+
     if estado_sel and "Estado de pago" in df.columns:
         mask &= df["Estado de pago"].isin(estado_sel)
-    if prov_sel and "Provedor" in df.columns:
-        mask &= df["Provedor"].isin(prov_sel)
 
-    def in_range(series):
-        return series.between(pd.to_datetime(d1), pd.to_datetime(d2), inclusive="both")
+    # Soporte “Provedor” o “Proveedor”
+    prov_col = "Provedor" if "Provedor" in df.columns else ("Proveedor" if "Proveedor" in df.columns else None)
+    if prov_col and prov_sel:
+        mask &= df[prov_col].isin(prov_sel)
+
+    # Cualquier fecha cae dentro del rango
+    if any(col in df.columns for col in ["Fecha inicio","Fecha fin","Fecha entrega"]):
+        fmask = pd.Series(False, index=df.index)
+        for c in ["Fecha inicio","Fecha fin","Fecha entrega"]:
+            if c in df.columns:
+                fmask |= pd.to_datetime(df[c], errors="coerce").between(d1, d2, inclusive="both")
+        mask &= fmask
+
+    if query_txt:
+        q = str(query_txt).lower()
+        txt_mask = (
+            df.get("Descripciónn", pd.Series("", index=df.index)).astype(str).str.lower().str.contains(q, na=False) |
+            df.get("item",         pd.Series("", index=df.index)).astype(str).str.lower().str.contains(q, na=False) |
+            df.get("Sub-item",     pd.Series("", index=df.index)).astype(str).str.lower().str.contains(q, na=False)
+        )
+        mask &= txt_mask
+
+    return df[mask].copy()
+
 
     if any(col in df.columns for col in ["Fecha inicio","Fecha fin","Fecha entrega"]):
         fmask = pd.Series(False, index=df.index)
@@ -664,6 +662,9 @@ def render_sm_kpi_cards(tabla_sm):
 # ============================
 df_raw, filters = build_filters()
 df = df_raw.copy()
+etapa_sel, estado_sel, prov_sel, rango_fechas, query_txt = filters
+df_f = apply_filters(df, etapa_sel, estado_sel, prov_sel, rango_fechas, query_txt)
+
 
 # Reasegurar numérico por si cambió la fuente
 if "Monto" in df.columns:
@@ -883,8 +884,13 @@ def render_item_analytics(df_in):
     with c3:
         st.write("")  # espaciador
 
-    # Presets de categorías
+        # Presets de categorías
     cats_all = sorted(df[cat_col].dropna().unique())
+
+    # Inicializa el valor controlado del multiselect
+    if "cats_sm_sel" not in st.session_state:
+        st.session_state["cats_sm_sel"] = cats_all
+
     p1, p2, p3, p4 = st.columns([1,1,1,1])
     with p1:
         preset_all = st.button("🟢 Todas")
@@ -895,21 +901,23 @@ def render_item_analytics(df_in):
     with p4:
         preset_id  = st.button("🧪 Solo I+D")
 
-    # Estado persistente para selección
-    if "cats_sel_state" not in st.session_state:
-        st.session_state.cats_sel_state = cats_all
-
+    # Al presionar un preset, actualiza directamente el valor del widget y relanza
     if preset_all:
-        st.session_state.cats_sel_state = cats_all
+        st.session_state["cats_sm_sel"] = cats_all
+        _safe_rerun()
     if preset_sum:
-        st.session_state.cats_sel_state = [c for c in cats_all if str(c).lower().startswith("suministro")]
+        st.session_state["cats_sm_sel"] = [c for c in cats_all if str(c).strip().lower().startswith("suministro")]
+        _safe_rerun()
     if preset_mon:
-        st.session_state.cats_sel_state = [c for c in cats_all if "montaje" in str(c).lower()]
+        st.session_state["cats_sm_sel"] = [c for c in cats_all if "montaje" in str(c).strip().lower()]
+        _safe_rerun()
     if preset_id:
-        st.session_state.cats_sel_state = [c for c in cats_all if "i+d" in str(c).lower() or "i + d" in str(c).lower()]
+        st.session_state["cats_sm_sel"] = [c for c in cats_all if "i+d" in str(c).lower() or "i + d" in str(c).lower()]
+        _safe_rerun()
 
-    cats_sel = st.multiselect("Categorías S/M", cats_all, default=st.session_state.cats_sel_state, key="cats_sm_sel")
-    st.session_state.cats_sel_state = cats_sel if cats_sel else st.session_state.cats_sel_state
+    # El multiselect ahora está controlado por session_state (no dependas de 'default')
+    cats_sel = st.multiselect("Categorías S/M", cats_all, key="cats_sm_sel")
+
 
     # Resumen de categorías (chips)
     _render_cat_summary_pills(df, cat_col)
@@ -1380,7 +1388,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<div class='fxi-card2'>"
-            "<h3 style='margin:0 0 10px'>🧮 Detalle de Factores Necesarios para el Piloto 10 kW ",
+            "<h3 style='margin:0 0 10px'>🧮 Factores Necesarios para el Piloto 10 kW ",
             unsafe_allow_html=True)
 
 # --- Base desde df_cost (respeta filtros activos de S/M que aplicaste arriba)

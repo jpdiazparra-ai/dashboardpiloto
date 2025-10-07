@@ -815,7 +815,7 @@ if "P_net_kW" not in _results.columns and "P_net_W" in _results.columns:
 gcol1, gcol2 = st.columns(2)
 
 # =========================
-# 1) ENERGÍA — Serie CSV o Weibull
+# 1) ENERGÍA — SOLO Series
 # =========================
 if modo == "Series (CSV)" and not _results.empty and {"timestamp", "E_kWh"}.issubset(_results.columns):
     _daily = (
@@ -832,7 +832,7 @@ if modo == "Series (CSV)" and not _results.empty and {"timestamp", "E_kWh"}.issu
         if len(_daily) >= 15:
             low = _sm.nonparametric.lowess(
                 endog=_daily["E_kWh_d"].values,
-                exog=_daily["timestamp"].astype("int64") // 10**9,  # segundos
+                exog=_daily["timestamp"].astype("int64") // 10**9,
                 frac=0.2, return_sorted=False
             )
             trend_series = pd.Series(low, index=_daily.index)
@@ -845,48 +845,29 @@ if modo == "Series (CSV)" and not _results.empty and {"timestamp", "E_kWh"}.issu
         trend_name = "Media móvil (7d)"
 
     fig_e = go.Figure()
-    fig_e.add_trace(go.Bar(
-        x=_daily["timestamp"], y=_daily["E_kWh_d"],
-        name="kWh/día", marker_line_width=0, opacity=0.85
-    ))
-    fig_e.add_trace(go.Scatter(
-        x=_daily["timestamp"], y=trend_series,
-        name=trend_name, mode="lines"
-    ))
+    fig_e.add_trace(go.Bar(x=_daily["timestamp"], y=_daily["E_kWh_d"], name="kWh/día", marker_line_width=0, opacity=0.85))
+    fig_e.add_trace(go.Scatter(x=_daily["timestamp"], y=trend_series, name=trend_name, mode="lines"))
 
     mu = float(_daily["E_kWh_d"].mean()) if len(_daily) else 0.0
     p95 = float(_daily["E_kWh_d"].quantile(0.95)) if len(_daily) else 0.0
     fig_e.add_hline(y=mu, line_dash="dot", line_color=SECOND)
     fig_e.add_hline(y=p95, line_dash="dash", line_color=ACCENT)
-    fig_e.add_annotation(xref="paper", x=0.01, y=mu, yref="y",
-                         text=f"μ ≈ {mu:,.1f} kWh/d", showarrow=False, font=dict(color=SECOND))
-    fig_e.add_annotation(xref="paper", x=0.01, y=p95, yref="y",
-                         text=f"p95 ≈ {p95:,.1f} kWh/d", showarrow=False, font=dict(color=ACCENT))
+    fig_e.add_annotation(xref="paper", x=0.01, y=mu, yref="y", text=f"μ ≈ {mu:,.1f} kWh/d", showarrow=False, font=dict(color=SECOND))
+    fig_e.add_annotation(xref="paper", x=0.01, y=p95, yref="y", text=f"p95 ≈ {p95:,.1f} kWh/d", showarrow=False, font=dict(color=ACCENT))
 
     fig_e = apply_plotly_theme(fig_e, "Energía neta diaria (con tendencia)", "Tiempo", "kWh/día", height=360)
     gcol1.plotly_chart(fig_e, use_container_width=True)
 
-elif modo == "Distribución (Weibull)" and not _results.empty and {"v", "E_kWh_bin"}.issubset(_results.columns):
-    fig_e = px.bar(_results, x="v", y="E_kWh_bin")
-    fig_e = apply_plotly_theme(fig_e, "Energía anual por bin (Weibull)", "v [m/s]", "kWh/año", height=360)
-    gcol1.plotly_chart(fig_e, use_container_width=True)
-else:
-    gcol1.info("No hay datos para graficar energía por intervalo/bin.")
-
 # ============================================
-# 2) POTENCIA — vs V_eq con CURVA NOMINAL
+# 2) POTENCIA — SOLO Series
 # ============================================
-if not _results.empty and {"v_eq_m_s", "P_net_kW"}.issubset(_results.columns):
+if modo == "Series (CSV)" and not _results.empty and {"v_eq_m_s", "P_net_kW"}.issubset(_results.columns):
     fig_pv = go.Figure()
-    fig_pv.add_trace(go.Scattergl(
-        x=_results["v_eq_m_s"], y=_results["P_net_kW"],
-        mode="markers", name="Medido (neto)", opacity=0.35,
-        marker=dict(size=5)
-    ))
+    fig_pv.add_trace(go.Scattergl(x=_results["v_eq_m_s"], y=_results["P_net_kW"], mode="markers",
+                                  name="Medido (neto)", opacity=0.35, marker=dict(size=5)))
 
-    # Tendencia sobre puntos (LOWESS o rolling)
+    # Tendencia
     trend = None
-    trend_name = ""
     try:
         import statsmodels.api as _sm  # noqa
         if len(_results) >= 50:
@@ -896,7 +877,6 @@ if not _results.empty and {"v_eq_m_s", "P_net_kW"}.issubset(_results.columns):
                 frac=0.15, return_sorted=True
             )
             trend = pd.DataFrame(low, columns=["v", "p"])
-            trend_name = "Tendencia (LOWESS)"
     except Exception:
         trend = None
 
@@ -904,41 +884,23 @@ if not _results.empty and {"v_eq_m_s", "P_net_kW"}.issubset(_results.columns):
         _tmp = _results[["v_eq_m_s", "P_net_kW"]].dropna().sort_values("v_eq_m_s")
         _tmp["p_roll"] = _tmp["P_net_kW"].rolling(window=50, min_periods=15, center=True).median()
         trend = _tmp.rename(columns={"v_eq_m_s": "v", "p_roll": "p"})[["v", "p"]].dropna()
-        trend_name = "Tendencia (mediana móvil)"
 
-    fig_pv.add_trace(go.Scatter(
-        x=trend["v"], y=trend["p"],
-        mode="lines", name=trend_name
-    ))
+    fig_pv.add_trace(go.Scatter(x=trend["v"], y=trend["p"], mode="lines", name="Tendencia (mediana móvil)"))
 
-    # Curva nominal en el mismo gráfico
+    # Curva nominal
     y_nom_kw = pc_df["P_KW"] if "P_KW" in pc_df.columns else (pc_df["P_W"] / 1000.0)
-    fig_pv.add_trace(go.Scatter(
-        x=pc_df["v_m_s"], y=y_nom_kw,
-        mode="lines+markers", name="Curva nominal P(v)",
-        line=dict(width=2, color="rgba(100,116,139,.9)"),
-        marker=dict(size=6)
-    ))
-
-    # Líneas útiles
+    fig_pv.add_trace(go.Scatter(x=pc_df["v_m_s"], y=y_nom_kw, mode="lines+markers", name="Curva nominal P(v)",
+                                line=dict(width=2, color="rgba(100,116,139,.9)"), marker=dict(size=6)))
     P_rated = float(y_nom_kw.max())
     fig_pv.add_hline(y=P_rated, line_dash="dot", line_color=GRAY_2)
-    fig_pv.add_annotation(xref="paper", x=0.99, y=P_rated, yref="y",
-                          text=f"P_rated ≈ {P_rated:,.2f} kW", showarrow=False, font=dict(color=GRAY_2))
-
-    try:
-        v_r = float(V_rated_hint) if V_rated_hint and V_rated_hint.strip() else None
-    except Exception:
-        v_r = None
-    if v_r:
-        fig_pv.add_vline(x=v_r, line_dash="dot", line_color=SECOND)
-        fig_pv.add_annotation(x=v_r, y=P_rated, text=f"V_rated ≈ {v_r:g} m/s",
-                              showarrow=False, yshift=12, font=dict(color=SECOND))
+    fig_pv.add_annotation(xref="paper", x=0.99, y=P_rated, yref="y", text=f"P_rated ≈ {P_rated:,.2f} kW",
+                          showarrow=False, font=dict(color=GRAY_2))
 
     fig_pv = apply_plotly_theme(fig_pv, "Potencia neta vs V_eq (con nominal)", "V_eq [m/s]", "P [kW]", height=360)
     gcol2.plotly_chart(fig_pv, use_container_width=True)
-else:
-    gcol2.info("Faltan columnas para graficar Potencia vs V_eq (se requiere 'v_eq_m_s' y 'P_net_kW').")
+
+# 👉 En modo Weibull NO pintamos nada aquí; todos los plots van dentro del expander "Análisis avanzado".
+
 
 # =========================
 # SERIES — Gráficos extra
@@ -1091,18 +1053,79 @@ if (modo == "Distribución (Weibull)"
         f = _results["pdf"].to_numpy(dtype=float)
         Pk = _results["P_net_kW"].to_numpy(dtype=float)
         dv = float(v[1] - v[0]) if len(v) > 1 else 0.05
+        
 
-        # 1) PDF + CDF
+    
+               # 1) PDF + CDF
         cdf = np.clip(np.cumsum(f) * dv, 0, 1)
         fig_pdfcdf = go.Figure()
         fig_pdfcdf.add_trace(go.Scatter(x=v, y=f, mode="lines", name="PDF f(v)"))
         fig_pdfcdf.add_trace(go.Scatter(x=v, y=cdf, mode="lines", name="CDF F(v)", yaxis="y2"))
-        fig_pdfcdf.update_layout(yaxis=dict(title="f(v)"),
-                                 yaxis2=dict(title="F(v)", overlaying="y", side="right"))
+        fig_pdfcdf.update_layout(
+            yaxis=dict(title="f(v)"),
+            yaxis2=dict(title="F(v)", overlaying="y", side="right")
+        )
         for thr in [3, 5, 8, 10]:
             fig_pdfcdf.add_vline(x=thr, line_dash="dot", line_color=GRAY_2)
         fig_pdfcdf = apply_plotly_theme(fig_pdfcdf, "Weibull — PDF y CDF", "v [m/s]", "f(v)", height=330)
         st.plotly_chart(fig_pdfcdf, use_container_width=True)
+
+        # 1.5) Energía anual por bin + acumulado (NUEVO)
+        if "E_kWh_bin" in _results.columns and _results["E_kWh_bin"].notna().any():
+            v_bins = _results["v"].to_numpy(dtype=float)
+            e_bin  = _results["E_kWh_bin"].fillna(0).to_numpy(dtype=float)
+
+            e_total = float(e_bin.sum())
+            e_cum_pct = (np.cumsum(e_bin) / e_total * 100.0) if e_total > 0 else np.zeros_like(e_bin)
+
+            # Top-3 bins (para texto)
+            top_idx = np.argsort(e_bin)[-3:][::-1]
+            top_info = ", ".join([f"{v_bins[i]:.1f} m/s: {e_bin[i]/1000:.1f} MWh" for i in top_idx])
+
+            fig_e_bins = make_subplots(specs=[[{"secondary_y": True}]])
+            # Barras: kWh/año por bin
+            fig_e_bins.add_trace(
+                go.Bar(x=v_bins, y=e_bin, name="E_kWh_bin", marker_line_width=0, opacity=0.9),
+                secondary_y=False
+            )
+            # Línea acumulada: %
+            fig_e_bins.add_trace(
+                go.Scatter(x=v_bins, y=e_cum_pct, name="Acumulado (%)", mode="lines"),
+                secondary_y=True
+            )
+
+            # Ejes y layout
+            fig_e_bins.update_xaxes(title_text="v [m/s]")
+            fig_e_bins.update_yaxes(title_text="kWh/año", secondary_y=False)
+            fig_e_bins.update_yaxes(title_text="% acumulado", range=[0, 100], secondary_y=True)
+
+            fig_e_bins = apply_plotly_theme(
+                fig_e_bins,
+                "Energía anual por bin (Weibull) + acumulado",
+                "v [m/s]",
+                "kWh/año",
+                height=360
+            )
+            st.plotly_chart(fig_e_bins, use_container_width=True)
+
+            # Tabla + descarga
+            bin_df = pd.DataFrame({
+                "v_m_s": v_bins,
+                "E_kWh_bin": e_bin,
+                "E_%_acumulado": e_cum_pct
+            })
+            st.caption(f"Top energía por bin: {top_info}")
+            _buf_bins = io.StringIO(); bin_df.to_csv(_buf_bins, index=False)
+            st.download_button(
+                "📥 Descargar energía por bin (CSV)",
+                _buf_bins.getvalue(),
+                file_name="energia_por_bin_weibull.csv",
+                mime="text/csv",
+                key="dl_weibull_bins_csv"
+            )
+        else:
+            st.info("No hay E_kWh_bin disponible para este modo.")
+
 
         # 2) Contribución al AEP por velocidad (%)
         if "E_kWh_bin" in _results.columns and _results["E_kWh_bin"].notna().any():

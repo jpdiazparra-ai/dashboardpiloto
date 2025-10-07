@@ -13,6 +13,31 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from math import gamma
+
+# ============================================================
+# Tabla de referencia nacional de parámetros Weibull (Chile)
+# Fuente: Atlas eólico Chile + literatura técnica (rango orientativo)
+# ============================================================
+REGIONES_WEIBULL = {
+    "Arica y Parinacota":    {"zona": "Norte",         "k_rng": (2.3, 3.0), "c_rng": (6.0, 9.0)},
+    "Tarapacá":               {"zona": "Norte",         "k_rng": (2.2, 3.0), "c_rng": (6.5, 9.5)},
+    "Antofagasta":            {"zona": "Norte",         "k_rng": (2.0, 2.8), "c_rng": (7.0, 10.0)},
+    "Atacama":                {"zona": "Centro-Norte",  "k_rng": (1.8, 2.5), "c_rng": (6.5, 9.0)},
+    "Coquimbo":               {"zona": "Centro-Norte",  "k_rng": (1.9, 2.7), "c_rng": (6.0, 8.5)},
+    "Valparaíso":             {"zona": "Centro",        "k_rng": (1.8, 2.6), "c_rng": (5.5, 8.0)},
+    "Metropolitana":          {"zona": "Centro",        "k_rng": (1.6, 2.4), "c_rng": (5.0, 7.0)},
+    "O’Higgins":              {"zona": "Centro-Sur",    "k_rng": (1.7, 2.4), "c_rng": (4.5, 6.5)},
+    "Maule":                  {"zona": "Centro-Sur",    "k_rng": (1.8, 2.5), "c_rng": (4.5, 6.5)},
+    "Ñuble":                  {"zona": "Centro-Sur",    "k_rng": (1.8, 2.6), "c_rng": (5.0, 7.0)},
+    "Biobío":                 {"zona": "Centro-Sur",    "k_rng": (2.0, 2.8), "c_rng": (6.0, 8.0)},
+    "La Araucanía":           {"zona": "Sur",           "k_rng": (2.1, 2.9), "c_rng": (6.5, 8.5)},
+    "Los Ríos":               {"zona": "Sur",           "k_rng": (2.2, 3.0), "c_rng": (6.0, 8.0)},
+    "Los Lagos":              {"zona": "Sur",           "k_rng": (2.0, 2.8), "c_rng": (6.0, 8.5)},
+    "Aysén":                  {"zona": "Sur Extremo",   "k_rng": (2.1, 3.0), "c_rng": (7.0, 9.0)},
+    "Magallanes":             {"zona": "Sur Extremo",   "k_rng": (2.5, 3.2), "c_rng": (8.0, 11.0)}
+}
+
 
 # ---------------------------
 # Configuración visual global
@@ -272,32 +297,41 @@ def apply_losses(power_W, losses_dict):
     return p
 
 
-def compute_energy_from_series(df, pc_df, z_sensor, H_hub, alpha,
-                               inverter_eff=0.95,
-                               default_temp_C=15.0, default_press_hPa=1013.0,
-                               losses=None):
+def compute_energy_from_series(
+    df, pc_df, z_sensor, H_hub, alpha,
+    inverter_eff=0.95,
+    default_temp_C=15.0, default_press_hPa=1013.0,
+    losses=None
+):
     df = df.copy()
+
+    # Paso temporal (h)
     if len(df) >= 2:
         dt_seconds = (df["timestamp"].iloc[1] - df["timestamp"].iloc[0]).total_seconds()
     else:
         dt_seconds = 600
     dt_h = dt_seconds / 3600.0
 
+    # Extrapolación a altura de buje
     v_hub = extrapolate_to_hub_height(df["v_mean_m_s"].values, z_sensor, H_hub, alpha)
 
+    # Densidad del aire
     if "air_temp_C" in df.columns and "pressure_hPa" in df.columns:
         rho = np.array([air_density(t, p) for t, p in zip(df["air_temp_C"], df["pressure_hPa"])])
     else:
         rho = np.full_like(v_hub, air_density(default_temp_C, default_press_hPa), dtype=float)
 
-    v_eq = equivalent_wind_speed(v_hub, rho)
-    P_W = interpolate_power(v_eq, pc_df)                         # W
+    # Velocidad equivalente por densidad y potencia
+    v_eq   = equivalent_wind_speed(v_hub, rho)
+    P_W    = interpolate_power(v_eq, pc_df)                 # W
     inv_eff = float(inverter_eff) if 0 < inverter_eff <= 1.0 else 1.0
-    P_ac_W = P_W * inv_eff                                       # W
-    P_net_W = apply_losses(P_ac_W, losses)                       # W
-    P_ac_kW = P_ac_W / 1000.0                                    # kW
-    P_net_kW = P_net_W / 1000.0                                  # kW
-    E_kWh = P_net_kW * dt_h                                      # kWh  (kW * h)
+    P_ac_W = P_W * inv_eff                                   # W
+    P_net_W = apply_losses(P_ac_W, losses)                   # W
+
+    # Energías/potencias en kW y kWh
+    P_ac_kW  = P_ac_W  / 1000.0
+    P_net_kW = P_net_W / 1000.0
+    E_kWh    = P_net_kW * dt_h
 
     out = pd.DataFrame({
         "timestamp": df["timestamp"],
@@ -309,22 +343,38 @@ def compute_energy_from_series(df, pc_df, z_sensor, H_hub, alpha,
         "E_kWh": E_kWh
     })
 
+    # KPIs base
     total_energy_kWh = out["E_kWh"].sum()
     P_rated_W = float(pc_df["P_W"].max())
     hours = len(out) * dt_h
-    capacity_factor = (total_energy_kWh * 1000.0) / (P_rated_W * hours) if P_rated_W > 0 and hours > 0 else 0.0
+    capacity_factor = ((total_energy_kWh * 1000.0) / (P_rated_W * hours)) if (P_rated_W > 0 and hours > 0) else 0.0
 
+    # KPIs extra (TI y ráfaga relativa G)
     kpis_extra = {}
+
+    # Intensidad de turbulencia TI = std/mean
     if "v_std_m_s" in df.columns:
         with np.errstate(divide='ignore', invalid='ignore'):
             TI = df["v_std_m_s"] / df["v_mean_m_s"].replace(0, np.nan)
-        kpis_extra["TI_p50"] = float(np.nanmedian(TI))
-        kpis_extra["TI_p90"] = float(np.nanpercentile(TI, 90))
+        TI_np = TI.to_numpy(dtype=float)
+        if np.isfinite(TI_np).any():
+            kpis_extra["TI_p50"] = float(np.nanmedian(TI_np))
+            kpis_extra["TI_p90"] = float(np.nanpercentile(TI_np, 90))
+        else:
+            kpis_extra["TI_p50"] = np.nan
+            kpis_extra["TI_p90"] = np.nan
+
+    # Ráfaga relativa G = vmax/mean
     if "v_max_m_s" in df.columns:
         with np.errstate(divide='ignore', invalid='ignore'):
             G = df["v_max_m_s"] / df["v_mean_m_s"].replace(0, np.nan)
-        kpis_extra["G_p50"] = float(np.nanmedian(G))
-        kpis_extra["G_p90"] = float(np.nanpercentile(G, 90))
+        G_np = G.to_numpy(dtype=float)
+        if np.isfinite(G_np).any():
+            kpis_extra["G_p50"] = float(np.nanmedian(G_np))
+            kpis_extra["G_p90"] = float(np.nanpercentile(G_np, 90))  # FIX: q=90
+        else:
+            kpis_extra["G_p50"] = np.nan
+            kpis_extra["G_p90"] = np.nan
 
     return out, {
         "AEP_kWh": total_energy_kWh * (8760.0 / hours) if hours > 0 else 0.0,
@@ -332,6 +382,7 @@ def compute_energy_from_series(df, pc_df, z_sensor, H_hub, alpha,
         "CapacityFactor_pct": capacity_factor * 100,
         **kpis_extra
     }
+
 
 
 def weibull_pdf(v, k, c):
@@ -366,77 +417,189 @@ def aep_from_weibull(pc_df, k, c, hours_year=8760, inverter_eff=0.95, losses=Non
 
 
 # ---------------------------
-# Sidebar - Entradas
+# Sidebar - Entradas (con expanders)
 # ---------------------------
 st.sidebar.title("Parámetros de entrada")
 
+# Modo
 modo = st.sidebar.radio("Modo de evaluación", ["Series (CSV)", "Distribución (Weibull)"], index=0)
 
-# Curva de potencia (URL + archivo opcional)
-st.sidebar.subheader("Curva de Potencia (CSV)")
-pc_url = st.sidebar.text_input(
-    "URL curva de potencia (Google Sheets CSV)",
-    value=PC_CSV_URL_DEFAULT,
-    help="Encabezados: v_m_s y P_KW (kW) o P_W (W). Si viene P_W, se convierte a P_KW automáticamente."
-)
-pc_file = st.sidebar.file_uploader("o sube CSV local (opcional)", type=["csv"], key="pc")
-
-with st.sidebar.expander("Descargar plantilla curva de potencia"):
-    download_button_from_text("📥 Descargar plantilla (power_curve.csv)", TEMPLATE_POWER_CURVE, "power_curve.csv")
+# Curva de potencia (si quieres también plegarla)
+with st.sidebar.expander("Curva de Potencia (CSV)", expanded=True):
+    pc_url = st.text_input(
+        "URL curva de potencia (Google Sheets CSV)",
+        value=PC_CSV_URL_DEFAULT,
+        help="Encabezados: v_m_s y P_KW (kW) o P_W (W). Si viene P_W, se convierte a P_KW automáticamente."
+    )
+    pc_file = st.file_uploader("o sube CSV local (opcional)", type=["csv"], key="pc")
+    with st.expander("Descargar plantilla curva de potencia", expanded=False):
+        download_button_from_text("📥 Descargar plantilla (power_curve.csv)", TEMPLATE_POWER_CURVE, "power_curve.csv")
 
 # Turbina
-st.sidebar.subheader("Turbina")
-inverter_eff = st.sidebar.slider("Eficiencia inversor (η)", 0.80, 1.00, 0.95, 0.01)
-H_hub = st.sidebar.number_input("Altura de buje H (m)", min_value=1.0, value=17.0, step=0.5)
-V_rated_hint = st.sidebar.text_input("Referencia: V_rated (m/s) (opcional)", "")
+with st.sidebar.expander("Turbina", expanded=False):
+    inverter_eff = st.slider("Eficiencia inversor (η)", 0.80, 1.00, 0.95, 0.01)
+    H_hub = st.number_input("Altura de buje H (m)", min_value=1.0, value=17.0, step=0.5)
+    V_rated_hint = st.text_input("Referencia: V_rated (m/s) (opcional)", "")
 
 # Sitio / Atmósfera
-st.sidebar.subheader("Sitio / Atmósfera")
-z_sensor = st.sidebar.number_input("Altura del sensor z (m)", min_value=0.1, value=13.0, step=0.5)
-alpha = st.sidebar.slider("Exponente de cizalle α", 0.00, 0.50, 0.14, 0.01)
-temp_default = st.sidebar.number_input("Temp media (°C, si no hay serie)", value=15.0, step=0.5)
-press_default = st.sidebar.number_input("Presión media (hPa, si no hay serie)", value=1013.0, step=0.5)
+with st.sidebar.expander("Sitio / Atmósfera", expanded=False):
+    z_sensor = st.number_input("Altura del sensor z (m)", min_value=0.1, value=13.0, step=0.5)
+    alpha = st.slider("Exponente de cizalle α", 0.00, 0.50, 0.14, 0.01)
+    temp_default = st.number_input("Temp media (°C, si no hay serie)", value=15.0, step=0.5)
+    press_default = st.number_input("Presión media (hPa, si no hay serie)", value=1013.0, step=0.5)
 
 # Pérdidas
-st.sidebar.subheader("Pérdidas (%)")
-losses = {
-    "availability_pct": st.sidebar.slider("Indisponibilidad (Availability)", 0, 30, 5, 1),
-    "electrical_pct": st.sidebar.slider("Pérdidas eléctricas", 0, 20, 3, 1),
-    "curtailment_pct": st.sidebar.slider("Curtailment (limitaciones)", 0, 30, 0, 1),
-    "soiling_icing_pct": st.sidebar.slider("Hielo/Suciedad (soiling)", 0, 20, 2, 1),
-    "wakes_pct": st.sidebar.slider("Estela (wakes, si aplica)", 0, 20, 0, 1),
-}
+with st.sidebar.expander("Pérdidas (%)", expanded=False):
+    losses = {
+        "availability_pct": st.slider("Indisponibilidad (Availability)", 0, 30, 5, 1),
+        "electrical_pct":   st.slider("Pérdidas eléctricas", 0, 20, 3, 1),
+        "curtailment_pct":  st.slider("Curtailment (limitaciones)", 0, 30, 0, 1),
+        "soiling_icing_pct":st.slider("Hielo/Suciedad (soiling)", 0, 20, 2, 1),
+        "wakes_pct":        st.slider("Estela (wakes, si aplica)", 0, 20, 0, 1),
+    }
 
 # Propuesta técnica
-st.sidebar.subheader("Propuesta técnica")
-consumo_diario_kWh_pt = st.sidebar.number_input("Consumo diario objetivo (kWh/día)", min_value=0.0, value=36000.0, step=100.0)
-consumo_anual_MWh_pt = st.sidebar.number_input(
-    "Consumo anual estimado (MWh/año) (opcional)", min_value=0.0, value=0.0, step=10.0,
-    help="Si queda en 0, se calcula como Consumo diario × 365 / 1000."
-)
-tarifa_actual_val = st.sidebar.number_input("Tarifa eléctrica actual ($/kWh)", min_value=0.0, value=120.0, step=10.0)
-margen_seguridad_pct = st.sidebar.slider("Margen de seguridad (%)", 0, 100, 15, 1)
-energia_riesgo_MWp = st.sidebar.number_input("Energía adicional de riesgo (MWp) (opcional)", min_value=0.0, value=0.0, step=0.1)
+with st.sidebar.expander("Propuesta técnica (objetivos)", expanded=False):
+    consumo_diario_kWh_pt = st.number_input(
+        "Consumo diario objetivo (kWh/día)",
+        min_value=0.0, value=36000.0, step=100.0
+    )
+    consumo_anual_MWh_pt = st.number_input(
+        "Consumo anual estimado (MWh/año) (opcional)",
+        min_value=0.0, value=0.0, step=10.0,
+        help="Si queda en 0, se calcula como Consumo diario × 365 / 1000."
+    )
+    tarifa_actual_val = st.number_input(
+        "Tarifa eléctrica actual ($/kWh)",
+        min_value=0.0, value=120.0, step=10.0
+    )
+    tarifa_turbinas_val = st.number_input(          # 👇 NUEVO CAMPO AQUÍ
+        "Tarifa turbinas ($/kWh)",
+        min_value=0.0, value=100.0, step=10.0,
+        help="Costo nivelado o precio objetivo de generación eólica."
+    )
+    margen_seguridad_pct = st.slider(
+        "Margen de seguridad (%)", 0, 100, 15, 1
+    )
+    energia_riesgo_MWp = st.number_input(
+        "Energía adicional de riesgo (MWp) (opcional)",
+        min_value=0.0, value=0.0, step=0.1
+    )
+
 
 # Entradas específicas por modo
 if modo == "Series (CSV)":
-    st.sidebar.subheader("Series de viento")
-    wind_url = st.sidebar.text_input(
-        "URL CSV (Google Sheets publicado)",
-        value=WIND_SERIES_URL_DEFAULT,
-        help="CSV con columnas: timestamp,v_mean_m_s,(v_max_m_s),(v_std_m_s),(direction_deg),(air_temp_C),(pressure_hPa)"
-    )
-    wind_file = st.sidebar.file_uploader("o sube CSV local (opcional)", type=["csv"], key="wind_csv")
-    with st.sidebar.expander("Descargar plantilla de series de viento"):
-        download_button_from_text("📥 Descargar plantilla (wind_series.csv)", TEMPLATE_WIND_SERIES, "wind_series.csv")
+    with st.sidebar.expander("Series de viento (CSV)", expanded=True):
+        wind_url = st.text_input(
+            "URL CSV (Google Sheets publicado)",
+            value=WIND_SERIES_URL_DEFAULT,
+            help="CSV con columnas: timestamp,v_mean_m_s,(v_max_m_s),(v_std_m_s),(direction_deg),(air_temp_C),(pressure_hPa)"
+        )
+        wind_file = st.file_uploader("o sube CSV local (opcional)", type=["csv"], key="wind_csv")
+        with st.expander("Descargar plantilla de series de viento", expanded=False):
+            download_button_from_text("📥 Descargar plantilla (wind_series.csv)", TEMPLATE_WIND_SERIES, "wind_series.csv")
     k_weibull = c_weibull = None
 else:
     wind_file = None
     wind_url = ""
-    st.sidebar.subheader("Weibull")
-    k_weibull = st.sidebar.number_input("k (forma)", min_value=0.5, value=2.0, step=0.1)
-    c_weibull = st.sidebar.number_input("c (escala, m/s)", min_value=0.1, value=6.0, step=0.1)
+    with st.sidebar.expander("Weibull", expanded=True):
+        k_weibull = st.number_input("k (forma)", min_value=0.5, value=2.0, step=0.1)
+        c_weibull = st.number_input("c (escala, m/s)", min_value=0.1, value=6.0, step=0.1)
 
+# (Opcional) Referencia nacional (Weibull) también plegable
+with st.sidebar.expander("Referencia nacional Weibull (Chile)", expanded=False):
+    macro_zonas = ["Norte","Centro-Norte","Centro","Centro-Sur","Sur","Sur Extremo"]
+
+    # Claves únicas para evitar StreamlitDuplicateElementId
+    zona_sel = st.selectbox(
+        "Zona geográfica de referencia",
+        macro_zonas, index=0, key="ref_weibull_zona"
+    )
+
+    regiones_filtradas = [r for r, info in REGIONES_WEIBULL.items() if info["zona"] == zona_sel]
+    region_sel = st.selectbox(
+        "Región de referencia",
+        sorted(regiones_filtradas), key="ref_weibull_region"
+    )
+
+    info = REGIONES_WEIBULL[region_sel]
+    k_sug = (float(info["k_rng"][0]) + float(info["k_rng"][1])) / 2.0
+    c_sug = (float(info["c_rng"][0]) + float(info["c_rng"][1])) / 2.0
+
+    try:
+        v_media = c_sug * gamma(1 + 1.0 / k_sug)
+    except Exception:
+        v_media = float("nan")
+
+    def _pexceed(v0, k, c):
+        try:
+            return np.exp(- (v0 / c) ** k)
+        except Exception:
+            return np.nan
+
+    p_gt_5 = _pexceed(5, k_sug, c_sug)
+    p_gt_8 = _pexceed(8, k_sug, c_sug)
+
+    st.info(
+        f"**{region_sel}** · zona **{zona_sel}**\n\n"
+        f"- k sugerido: **{k_sug:.2f}** (rango {info['k_rng'][0]:.1f}–{info['k_rng'][1]:.1f})\n"
+        f"- c sugerido: **{c_sug:.2f} m/s** (rango {info['c_rng'][0]:.1f}–{info['c_rng'][1]:.1f})\n"
+        f"- v̄ estimada: **{v_media:.2f} m/s**\n"
+        f"- P(V>5): **{(p_gt_5*100):.1f}%** · P(V>8): **{(p_gt_8*100):.1f}%**"
+    )
+
+    if st.button("Usar k,c sugeridos", key="ref_weibull_btn"):
+        # Si estás en modo Weibull, puedes guardar en session_state para reutilizar
+        st.session_state["k_weibull"] = float(k_sug)
+        st.session_state["c_weibull"] = float(c_sug)
+
+
+# ============================
+# Sugerencias k,c por zona/REGIÓN (Chile)
+# ============================
+
+REGIONES_WEIBULL = {
+    "Arica y Parinacota":  {"zona":"Norte","k_rng":(2.4,3.0),"c_rng":(7.0,9.0)},
+    "Tarapacá":            {"zona":"Norte","k_rng":(2.5,3.0),"c_rng":(7.5,9.5)},
+    "Antofagasta":         {"zona":"Norte","k_rng":(2.6,3.1),"c_rng":(7.8,9.8)},
+    "Atacama":             {"zona":"Norte","k_rng":(2.3,2.8),"c_rng":(6.8,8.8)},
+    "Coquimbo":            {"zona":"Centro-Norte","k_rng":(2.2,2.7),"c_rng":(5.8,7.2)},
+    "Valparaíso":          {"zona":"Centro","k_rng":(2.1,2.6),"c_rng":(5.5,6.8)},
+    "Metropolitana":       {"zona":"Centro","k_rng":(2.0,2.5),"c_rng":(5.0,6.2)},
+    "O'Higgins":           {"zona":"Centro","k_rng":(2.0,2.5),"c_rng":(5.0,6.2)},
+    "Maule":               {"zona":"Centro","k_rng":(1.9,2.4),"c_rng":(4.8,6.0)},
+    "Ñuble":               {"zona":"Centro-Sur","k_rng":(1.9,2.3),"c_rng":(5.2,6.6)},
+    "Biobío":              {"zona":"Centro-Sur","k_rng":(1.9,2.3),"c_rng":(5.5,6.8)},
+    "La Araucanía":        {"zona":"Sur","k_rng":(1.8,2.2),"c_rng":(6.0,7.6)},
+    "Los Ríos":            {"zona":"Sur","k_rng":(1.8,2.2),"c_rng":(6.2,7.8)},
+    "Los Lagos":           {"zona":"Sur","k_rng":(1.8,2.2),"c_rng":(6.5,8.5)},
+    "Aysén":               {"zona":"Sur","k_rng":(1.7,2.1),"c_rng":(7.2,9.0)},
+    "Magallanes":          {"zona":"Sur Extremo","k_rng":(1.6,2.0),"c_rng":(9.0,11.0)},
+}
+
+def _mid(a,b): return (float(a)+float(b))/2.0
+
+
+with st.expander("📋 Tabla de referencia nacional Weibull (k,c) — Chile", expanded=False):
+    rows = []
+    for reg,inf in REGIONES_WEIBULL.items():
+        k_mid = _mid(*inf["k_rng"]); c_mid = _mid(*inf["c_rng"])
+        try:
+            vmean = c_mid * gamma(1 + 1.0/k_mid)
+        except Exception:
+            vmean = np.nan
+        rows.append({
+            "Zona": inf["zona"],
+            "Región": reg,
+            "k (min–max)": f"{inf['k_rng'][0]:.1f}–{inf['k_rng'][1]:.1f}",
+            "c (m/s, min–max)": f"{inf['c_rng'][0]:.1f}–{inf['c_rng'][1]:.1f}",
+            "k sugerido": round(k_mid,2),
+            "c sugerido (m/s)": round(c_mid,2),
+            "v_media estimada (m/s)": round(vmean,2)
+        })
+    df_ref = pd.DataFrame(rows).sort_values(["Zona","Región"])
+    st.dataframe(df_ref, use_container_width=True, hide_index=True)
+    st.caption("Valores referenciales; ajústalos con mediciones locales si están disponibles.")
 
 # ---------------------------
 # Encabezado
@@ -491,13 +654,14 @@ with st.expander("Curva de potencia cargada", expanded=True):
     fig_pc = apply_plotly_theme(fig_pc, "Curva de Potencia (ρ = 1.225 kg/m³)", "v [m/s]", "P [kW]", height=360)
     st.plotly_chart(fig_pc, use_container_width=True)
 
-
 # ---------------------------
 # Cálculo por modo
 # ---------------------------
 col_kpis_1, col_kpis_2, col_kpis_3, col_kpis_4 = st.columns(4)
 results_df = None
 monthly_df = None
+wind_df = None          # evita NameError en modo Weibull
+
 AEP_kWh = 0.0
 CF_pct = 0.0
 mean_daily_kWh = 0.0
@@ -505,6 +669,7 @@ coverage_pct = None
 extra_metrics = {}
 
 if modo == "Series (CSV)":
+    # ----- SERIE CSV -----
     src_label = None
     if wind_file is not None:
         try:
@@ -542,7 +707,7 @@ if modo == "Series (CSV)":
         daily_energy = results_df.set_index("timestamp")["E_kWh"].resample("D").sum()
         mean_daily_kWh = float(daily_energy.mean() if len(daily_energy) else 0.0)
 
-    # Cobertura
+    # Cobertura vs. consumo objetivo
     if consumo_diario_kWh_pt > 0:
         coverage_pct = (mean_daily_kWh / consumo_diario_kWh_pt) * 100.0
 
@@ -555,125 +720,323 @@ if modo == "Series (CSV)":
         f"{coverage_pct:,.1f}%" if coverage_pct is not None else f"{consumo_diario_kWh_pt:,.0f}"
     )
 
-  # -------- Gráficos (Series) --------
-gcol1, gcol2 = st.columns(2)
+else:
+    # ----- DISTRIBUCIÓN (WEIBULL) -----
+    rho_site = air_density(temp_default, press_default)
+    AEP_kWh, CF_pct, (v, f, v_eq, P_net_KW) = aep_from_weibull(
+        pc_df, k_weibull, c_weibull,
+        hours_year=8760,
+        inverter_eff=inverter_eff,
+        losses=losses,
+        rho=rho_site,
+        rho_ref=1.225
+    )
 
-# Asegurar orden temporal y columnas esperadas
-_results = results_df.sort_values("timestamp").reset_index(drop=True).copy()
+    # DataFrame utilizable por plots/tablas en modo Weibull
+    results_df = pd.DataFrame({
+        "v": v,                      # velocidad (m/s)
+        "pdf": f,                    # distribución
+        "v_eq_m_s": v_eq,            # velocidad equivalente por densidad
+        "P_net_kW": P_net_KW,        # potencia neta esperada por bin
+        "E_kWh_bin": P_net_KW * 8760.0 * f  # energía anual esperada por bin
+    })
+
+    # KPIs y cobertura
+    mean_daily_kWh = AEP_kWh / 365.0
+    if consumo_diario_kWh_pt > 0:
+        coverage_pct = (mean_daily_kWh / consumo_diario_kWh_pt) * 100.0
+
+    col_kpis_1.metric("AEP (P50) [kWh/año]", f"{AEP_kWh:,.0f}")
+    col_kpis_2.metric("Factor de Planta [%]", f"{CF_pct:,.1f}")
+    col_kpis_3.metric("Energía diaria media [kWh/d]", f"{mean_daily_kWh:,.2f}")
+    col_kpis_4.metric(
+        "Cobertura demanda [%]" if consumo_diario_kWh_pt > 0 else "Consumo diario (kWh/d)",
+        f"{coverage_pct:,.1f}%" if coverage_pct is not None else f"{consumo_diario_kWh_pt:,.0f}"
+    )
+
+# ==============================================================
+# Construcción segura de _results (válido para Series y Weibull)
+# ==============================================================
+
+# Asegura que existan las referencias
+if "results_df" not in locals() or results_df is None:
+    results_df = pd.DataFrame()
+if "wind_df" not in locals():
+    wind_df = None  # evita NameError en modo Weibull
+
+# 1) Normaliza tipo
+if isinstance(results_df, dict):
+    results_df = pd.DataFrame(results_df)
+elif not isinstance(results_df, pd.DataFrame):
+    results_df = pd.DataFrame()
+
+# 2) Si está vacío → crea esqueleto
+if results_df.empty:
+    _results = pd.DataFrame(columns=[
+        "timestamp", "v", "bin", "v_eq_m_s",
+        "v_mean_hub_m_s", "P_net_kW", "E_kWh", "E_kWh_bin", "pdf"
+    ])
+else:
+    # 3) Orden estable según columnas disponibles
+    if "timestamp" in results_df.columns:
+        sort_key = "timestamp"
+    elif "v" in results_df.columns:
+        sort_key = "v"
+    elif "bin" in results_df.columns:
+        sort_key = "bin"
+    else:
+        results_df = results_df.assign(_idx=np.arange(len(results_df)))
+        sort_key = "_idx"
+
+    _results = (
+        results_df
+        .sort_values(sort_key, kind="stable")
+        .reset_index(drop=True)
+        .copy()
+    )
+
+# 4) Garantiza potencia en kW si venía en W
 if "P_net_kW" not in _results.columns and "P_net_W" in _results.columns:
     _results["P_net_kW"] = _results["P_net_W"] / 1000.0
 
-# ======= Columna 1 =======
-with gcol1:
-    # --- Energía por intervalo (línea + área + EMA) ---
-    if len(_results):
-        fig_e = go.Figure()
-        fig_e.add_trace(go.Scatter(
-            x=_results["timestamp"], y=_results["E_kWh"],
-            mode="lines", name="Energía intervalo",
-            line=dict(color=PRIMARY, width=2),
-            fill="tozeroy", fillcolor="rgba(20,184,166,0.12)",
-            hovertemplate="%{x|%Y-%m-%d %H:%M}<br><b>%{y:.2f} kWh</b><extra></extra>"
-        ))
-        if len(_results) > 5:
-            window = max(3, int(min(96, len(_results) * 0.02)))
-            ema = _results["E_kWh"].ewm(span=window, adjust=False).mean()
-            fig_e.add_trace(go.Scatter(
-                x=_results["timestamp"], y=ema,
-                mode="lines", name=f"Tendencia (EMA {window})",
-                line=dict(color=SECOND, width=2, dash="dot"),
-                hoverinfo="skip"
-            ))
-        fig_e = apply_plotly_theme(fig_e, "Energía por intervalo", "", "kWh", height=330)
-        fig_e.update_layout(margin=dict(l=14, r=16, t=64, b=20))
-        st.plotly_chart(fig_e, use_container_width=True)
-    else:
-        st.info("No hay datos para graficar energía por intervalo.")
+# -------- Gráficos (Series y Weibull) --------
+gcol1, gcol2 = st.columns(2)
 
-    # --- Histograma de velocidad (buje) con badge de media ---
-    if "v_mean_hub_m_s" in _results.columns and _results["v_mean_hub_m_s"].notna().any():
-        vhub = _results["v_mean_hub_m_s"].dropna()
-        vmean = float(vhub.mean())
+# =========================
+# 1) ENERGÍA — Serie CSV o Weibull
+# =========================
+if modo == "Series (CSV)" and not _results.empty and {"timestamp", "E_kWh"}.issubset(_results.columns):
+    _daily = (
+        _results.set_index("timestamp")["E_kWh"]
+        .resample("D").sum()
+        .to_frame("E_kWh_d")
+        .reset_index()
+    )
 
-        fig_hist = px.histogram(vhub, nbins=40)
-        fig_hist.update_traces(marker_color=SECOND, opacity=0.9, name="Frecuencia")
-        fig_hist.add_vline(x=vmean, line_dash="dash", line_color=ACCENT, line_width=2)
-        fig_hist.add_annotation(
-            x=vmean, xref="x", y=1.06, yref="paper", showarrow=False,
-            text=f"<b>Media</b> ≈ {vmean:.2f} m/s",
-            font=dict(color=ACCENT),
-            bgcolor="rgba(20,184,166,.10)", bordercolor=ACCENT, borderwidth=1
-        )
-        fig_hist = apply_plotly_theme(fig_hist, "Histograma de velocidad (altura de buje)", "v [m/s]", "frecuencia", height=330)
-        fig_hist.update_layout(margin=dict(l=14, r=16, t=70, b=28))
-        st.plotly_chart(fig_hist, use_container_width=True)
-    else:
-        st.info("No hay columna/valores para 'v_mean_hub_m_s'.")
+    trend_series = None
+    trend_name = ""
+    try:
+        import statsmodels.api as _sm  # noqa
+        if len(_daily) >= 15:
+            low = _sm.nonparametric.lowess(
+                endog=_daily["E_kWh_d"].values,
+                exog=_daily["timestamp"].astype("int64") // 10**9,  # segundos
+                frac=0.2, return_sorted=False
+            )
+            trend_series = pd.Series(low, index=_daily.index)
+            trend_name = "Tendencia (LOWESS)"
+    except Exception:
+        trend_series = None
 
-# ======= Columna 2 =======
-with gcol2:
-    # --- Potencia neta vs V_eq (dispersión + LOWESS + curva nominal) ---
-    if "v_eq_m_s" in _results.columns and "P_net_kW" in _results.columns:
+    if trend_series is None:
+        trend_series = _daily["E_kWh_d"].rolling(window=7, min_periods=3, center=True).mean()
+        trend_name = "Media móvil (7d)"
+
+    fig_e = go.Figure()
+    fig_e.add_trace(go.Bar(
+        x=_daily["timestamp"], y=_daily["E_kWh_d"],
+        name="kWh/día", marker_line_width=0, opacity=0.85
+    ))
+    fig_e.add_trace(go.Scatter(
+        x=_daily["timestamp"], y=trend_series,
+        name=trend_name, mode="lines"
+    ))
+
+    mu = float(_daily["E_kWh_d"].mean()) if len(_daily) else 0.0
+    p95 = float(_daily["E_kWh_d"].quantile(0.95)) if len(_daily) else 0.0
+    fig_e.add_hline(y=mu, line_dash="dot", line_color=SECOND)
+    fig_e.add_hline(y=p95, line_dash="dash", line_color=ACCENT)
+    fig_e.add_annotation(xref="paper", x=0.01, y=mu, yref="y",
+                         text=f"μ ≈ {mu:,.1f} kWh/d", showarrow=False, font=dict(color=SECOND))
+    fig_e.add_annotation(xref="paper", x=0.01, y=p95, yref="y",
+                         text=f"p95 ≈ {p95:,.1f} kWh/d", showarrow=False, font=dict(color=ACCENT))
+
+    fig_e = apply_plotly_theme(fig_e, "Energía neta diaria (con tendencia)", "Tiempo", "kWh/día", height=360)
+    gcol1.plotly_chart(fig_e, use_container_width=True)
+
+elif modo == "Distribución (Weibull)" and not _results.empty and {"v", "E_kWh_bin"}.issubset(_results.columns):
+    fig_e = px.bar(_results, x="v", y="E_kWh_bin")
+    fig_e = apply_plotly_theme(fig_e, "Energía anual por bin (Weibull)", "v [m/s]", "kWh/año", height=360)
+    gcol1.plotly_chart(fig_e, use_container_width=True)
+else:
+    gcol1.info("No hay datos para graficar energía por intervalo/bin.")
+
+# ============================================
+# 2) POTENCIA — vs V_eq con CURVA NOMINAL
+# ============================================
+if not _results.empty and {"v_eq_m_s", "P_net_kW"}.issubset(_results.columns):
+    fig_pv = go.Figure()
+    fig_pv.add_trace(go.Scattergl(
+        x=_results["v_eq_m_s"], y=_results["P_net_kW"],
+        mode="markers", name="Medido (neto)", opacity=0.35,
+        marker=dict(size=5)
+    ))
+
+    # Tendencia sobre puntos (LOWESS o rolling)
+    trend = None
+    trend_name = ""
+    try:
+        import statsmodels.api as _sm  # noqa
+        if len(_results) >= 50:
+            low = _sm.nonparametric.lowess(
+                endog=_results["P_net_kW"].values,
+                exog=_results["v_eq_m_s"].values,
+                frac=0.15, return_sorted=True
+            )
+            trend = pd.DataFrame(low, columns=["v", "p"])
+            trend_name = "Tendencia (LOWESS)"
+    except Exception:
         trend = None
-        try:
-            import statsmodels.api as _sm  # noqa: F401
-            trend = "lowess" if len(_results) >= 20 else None
-        except Exception:
-            pass
 
-        fig_pv = px.scatter(_results, x="v_eq_m_s", y="P_net_kW", trendline=trend, opacity=0.55)
-        fig_pv.update_traces(marker=dict(size=5, line=dict(width=0)))
+    if trend is None:
+        _tmp = _results[["v_eq_m_s", "P_net_kW"]].dropna().sort_values("v_eq_m_s")
+        _tmp["p_roll"] = _tmp["P_net_kW"].rolling(window=50, min_periods=15, center=True).median()
+        trend = _tmp.rename(columns={"v_eq_m_s": "v", "p_roll": "p"})[["v", "p"]].dropna()
+        trend_name = "Tendencia (mediana móvil)"
 
-        # Curva nominal (si existe) para contexto
-        if "v_m_s" in pc_df.columns and ("P_KW" in pc_df.columns or "P_W" in pc_df.columns):
-            _ykW = pc_df["P_KW"] if "P_KW" in pc_df.columns else (pc_df["P_W"] / 1000.0)
-            fig_pv.add_trace(go.Scatter(
-                x=pc_df["v_m_s"], y=_ykW,
-                mode="lines", name="Curva nominal",
-                line=dict(color="rgba(100,116,139,.9)", width=2),
-                hovertemplate="v=%{x:.2f} m/s<br>P=%{y:.2f} kW<extra></extra>"
-            ))
+    fig_pv.add_trace(go.Scatter(
+        x=trend["v"], y=trend["p"],
+        mode="lines", name=trend_name
+    ))
 
-        fig_pv = apply_plotly_theme(fig_pv, "Potencia neta vs V_eq", "V_eq [m/s]", "P_net [kW]", height=330)
-        fig_pv.update_layout(margin=dict(l=14, r=16, t=64, b=28))
-        st.plotly_chart(fig_pv, use_container_width=True)
-    else:
-        st.info("Faltan columnas para graficar Potencia neta vs V_eq (se requiere 'v_eq_m_s' y 'P_net_kW').")
+    # Curva nominal en el mismo gráfico
+    y_nom_kw = pc_df["P_KW"] if "P_KW" in pc_df.columns else (pc_df["P_W"] / 1000.0)
+    fig_pv.add_trace(go.Scatter(
+        x=pc_df["v_m_s"], y=y_nom_kw,
+        mode="lines+markers", name="Curva nominal P(v)",
+        line=dict(width=2, color="rgba(100,116,139,.9)"),
+        marker=dict(size=6)
+    ))
+
+    # Líneas útiles
+    P_rated = float(y_nom_kw.max())
+    fig_pv.add_hline(y=P_rated, line_dash="dot", line_color=GRAY_2)
+    fig_pv.add_annotation(xref="paper", x=0.99, y=P_rated, yref="y",
+                          text=f"P_rated ≈ {P_rated:,.2f} kW", showarrow=False, font=dict(color=GRAY_2))
+
+    try:
+        v_r = float(V_rated_hint) if V_rated_hint and V_rated_hint.strip() else None
+    except Exception:
+        v_r = None
+    if v_r:
+        fig_pv.add_vline(x=v_r, line_dash="dot", line_color=SECOND)
+        fig_pv.add_annotation(x=v_r, y=P_rated, text=f"V_rated ≈ {v_r:g} m/s",
+                              showarrow=False, yshift=12, font=dict(color=SECOND))
+
+    fig_pv = apply_plotly_theme(fig_pv, "Potencia neta vs V_eq (con nominal)", "V_eq [m/s]", "P [kW]", height=360)
+    gcol2.plotly_chart(fig_pv, use_container_width=True)
+else:
+    gcol2.info("Faltan columnas para graficar Potencia vs V_eq (se requiere 'v_eq_m_s' y 'P_net_kW').")
+
+# =========================
+# SERIES — Gráficos extra
+# =========================
+if modo == "Series (CSV)" and not _results.empty:
+
+    s1, s2 = st.columns(2)
+
+    # 1) Histograma de V_eq (complemento al de v_hub)
+    if "v_eq_m_s" in _results.columns and _results["v_eq_m_s"].notna().any():
+        v_eq = _results["v_eq_m_s"].dropna()
+        p50 = float(v_eq.quantile(0.50))
+        p90 = float(v_eq.quantile(0.90))
+
+        fig_hv = px.histogram(v_eq, nbins=40)
+        fig_hv.add_vline(x=p50, line_dash="dash", line_color=SECOND)
+        fig_hv.add_vline(x=p90, line_dash="dot",  line_color=ACCENT)
+        fig_hv.add_annotation(x=p50, yref="paper", y=1.06, xref="x", text=f"p50 ≈ {p50:.2f} m/s", showarrow=False, font=dict(color=SECOND))
+        fig_hv.add_annotation(x=p90, yref="paper", y=1.06, xref="x", text=f"p90 ≈ {p90:.2f} m/s", showarrow=False, font=dict(color=ACCENT))
+        fig_hv = apply_plotly_theme(fig_hv, "Histograma de V_eq (densidad ajustada)", "V_eq [m/s]", "frecuencia", height=320)
+        s1.plotly_chart(fig_hv, use_container_width=True)
+
+    # 2) Curva diurna (perfil hora-del-día) en V_hub y/o Potencia
+    try:
+        _tmp = _results.dropna(subset=["timestamp"]).copy()
+        _tmp["hour"] = _tmp["timestamp"].dt.hour
+        # promedio horario
+        y_cols = [c for c in ["v_mean_hub_m_s", "P_net_kW"] if c in _tmp.columns]
+        for y in y_cols:
+            prof = _tmp.groupby("hour")[y].mean().reset_index()
+            fig_d = px.line(prof, x="hour", y=y, markers=True)
+            fig_d = apply_plotly_theme(fig_d, f"Perfil diurno — {y}", "Hora del día", y, height=320)
+            s2.plotly_chart(fig_d, use_container_width=True)
+    except Exception:
+        pass
+
+    m1, m2 = st.columns(2)
+
+    # 3) Boxplot mensual de V_hub (variabilidad estacional)
+    if "v_mean_hub_m_s" in _results.columns and _results["v_mean_hub_m_s"].notna().any():
+        _bx = _results.dropna(subset=["timestamp", "v_mean_hub_m_s"]).copy()
+        _bx["mes"] = _bx["timestamp"].dt.to_period("M").astype(str)
+        fig_bx = px.box(_bx, x="mes", y="v_mean_hub_m_s", points=False)
+        fig_bx = apply_plotly_theme(fig_bx, "Distribución mensual de velocidad (buje)", "Mes", "v_hub [m/s]", height=330)
+        m1.plotly_chart(fig_bx, use_container_width=True)
+
+    # 4) Duration curve (curva de duración) de velocidad o potencia
+    if "v_mean_hub_m_s" in _results.columns:
+        v_sorted = np.sort(_results["v_mean_hub_m_s"].dropna())[::-1]
+        x_pct = np.linspace(0, 100, len(v_sorted), endpoint=False)
+        fig_dc = go.Figure(go.Scatter(x=x_pct, y=v_sorted, mode="lines", name="v_hub"))
+        fig_dc = apply_plotly_theme(fig_dc, "Curva de duración — velocidad", "% tiempo excedencia", "v_hub [m/s]", height=330)
+        m2.plotly_chart(fig_dc, use_container_width=True)
+
+    # (opcional) duration curve de Potencia
+    if "P_net_kW" in _results.columns:
+        p_sorted = np.sort(_results["P_net_kW"].dropna())[::-1]
+        x_pct = np.linspace(0, 100, len(p_sorted), endpoint=False)
+        fig_dcp = go.Figure(go.Scatter(x=x_pct, y=p_sorted, mode="lines", name="P_net"))
+        fig_dcp.add_hline(y=float(pc_df["P_KW"].max()), line_dash="dot", line_color=GRAY_2)
+        fig_dcp = apply_plotly_theme(fig_dcp, "Curva de duración — potencia neta", "% tiempo excedencia", "P [kW]", height=330)
+        st.plotly_chart(fig_dcp, use_container_width=True)
 
 # ---- TI, Gust y Rosa de vientos ----
 extras = st.container()
 with extras:
     col_gust, col_rose = st.columns(2)
 
-    # --- Intensidad de turbulencia (histograma + p50) ---
-    if "v_std_m_s" in wind_df.columns:
-        with np.errstate(divide='ignore', invalid='ignore'):
-            TI = (wind_df["v_std_m_s"] / wind_df["v_mean_m_s"].replace(0, np.nan)).clip(upper=5)
-        fig_ti = px.histogram(TI.dropna(), nbins=40)
-        fig_ti.update_traces(marker_color=PRIMARY, opacity=0.9)
-        p50 = extra_metrics.get('TI_p50', np.nan)
-        if np.isfinite(p50):
-            fig_ti.add_vline(x=p50, line_dash="dash", line_color=SECOND, line_width=2)
-            fig_ti.add_annotation(
-                x=p50, xref="x", y=1.06, yref="paper", showarrow=False,
-                text=f"p50 ≈ {p50:.2f}",
-                font=dict(color=SECOND),
-                bgcolor="rgba(51,65,85,.08)", bordercolor=SECOND, borderwidth=1
-            )
-        fig_ti = apply_plotly_theme(fig_ti, "Intensidad de turbulencia TI", "TI [-]", "frecuencia", height=320)
-        fig_ti.update_layout(margin=dict(l=14, r=16, t=64, b=28))
-        col_gust.plotly_chart(fig_ti, use_container_width=True)
-    else:
-        col_gust.info("No hay columna v_std_m_s para TI.")
+def _has_wind(cols):
+    return (
+        modo == "Series (CSV)"
+        and isinstance(wind_df, pd.DataFrame)
+        and not wind_df.empty
+        and all(c in wind_df.columns for c in cols)
+    )
 
-    # --- Rosa de vientos (barpolar pro) ---
-    with col_rose:
-        if "direction_deg" in wind_df.columns and wind_df["direction_deg"].notna().any():
-            dir_deg = (wind_df["direction_deg"].dropna().astype(float) % 360.0)
-            sector_width = 22.5
-            edges = np.arange(0, 360 + sector_width, sector_width)
-            cats = pd.cut(dir_deg, bins=edges, right=False, include_lowest=True, labels=edges[:-1])
-            counts = cats.value_counts().sort_index()
+# --- Intensidad de turbulencia (histograma + p50) ---
+if _has_wind(["v_std_m_s", "v_mean_m_s"]):
+    with np.errstate(divide='ignore', invalid='ignore'):
+        TI = (wind_df["v_std_m_s"] / wind_df["v_mean_m_s"].replace(0, np.nan)).clip(upper=5)
+
+    fig_ti = px.histogram(TI.dropna(), nbins=40)
+    fig_ti.update_traces(marker_color=PRIMARY, opacity=0.9)
+
+    p50 = extra_metrics.get("TI_p50", np.nan)
+    if np.isfinite(p50):
+        fig_ti.add_vline(x=p50, line_dash="dash", line_color=SECOND, line_width=2)
+        fig_ti.add_annotation(
+            x=p50, xref="x", y=1.06, yref="paper", showarrow=False,
+            text=f"p50 ≈ {p50:.2f}",
+            font=dict(color=SECOND),
+            bgcolor="rgba(51,65,85,.08)", bordercolor=SECOND, borderwidth=1
+        )
+
+    fig_ti = apply_plotly_theme(fig_ti, "Intensidad de turbulencia TI", "TI [-]", "frecuencia", height=320)
+    fig_ti.update_layout(margin=dict(l=14, r=16, t=64, b=28))
+    col_gust.plotly_chart(fig_ti, use_container_width=True)
+else:
+    col_gust.info("No hay datos de serie con 'v_std_m_s' y 'v_mean_m_s' (modo Series).")
+
+# --- Rosa de vientos (barpolar pro) ---
+with col_rose:
+    if _has_wind(["direction_deg"]):
+        dir_deg = (wind_df["direction_deg"].dropna().astype(float) % 360.0)
+        sector_width = 22.5
+        edges = np.arange(0, 360 + sector_width, sector_width)
+        cats = pd.cut(dir_deg, bins=edges, right=False, include_lowest=True, labels=edges[:-1])
+        counts = cats.value_counts().sort_index()
+
+        if counts.sum() > 0:
             r = (counts / counts.sum() * 100.0).values
             theta = counts.index.astype(float) + (sector_width / 2.0)
 
@@ -683,22 +1046,123 @@ with extras:
                 hovertemplate="Dir %{theta:.0f}°<br>%{r:.1f}%<extra></extra>"
             ))
             fig_rose.update_layout(
-                title={"text": "Rosa de viento (frecuencia %)", "x": 0.02, "y": 0.98, "xanchor": "left", "yanchor": "top"},
+                title={"text": "Rosa de viento (frecuencia %)", "x": 0.02, "y": 0.98,
+                       "xanchor": "left", "yanchor": "top"},
                 showlegend=False,
                 height=320,
                 margin=dict(l=8, r=8, t=64, b=8),
                 polar=dict(
                     bgcolor="white",
-                    radialaxis=dict(ticksuffix="%", angle=90, showline=False, gridcolor=GRID, gridwidth=1),
+                    radialaxis=dict(ticksuffix="%", angle=90, showline=False,
+                                    gridcolor=GRID, gridwidth=1),
                     angularaxis=dict(direction="clockwise", rotation=90, gridcolor=GRID)
                 ),
                 paper_bgcolor="white"
             )
             col_rose.plotly_chart(fig_rose, use_container_width=True)
         else:
-            col_rose.info("No hay columna direction_deg en la serie para la rosa de viento.")
+            col_rose.info("No hay datos suficientes para construir la rosa de viento.")
+    else:
+        col_rose.info("No hay columna 'direction_deg' en la serie (solo aplica en modo Series).")
 
+# =========================
+# (Sólo Weibull) — Análisis avanzado
+# =========================
+if (modo == "Distribución (Weibull)"
+    and isinstance(_results, pd.DataFrame)
+    and not _results.empty
+    and {"v","pdf","P_net_kW"}.issubset(_results.columns)):
 
+    with st.expander("📈 Análisis avanzado Weibull", expanded=True):
+
+        v = _results["v"].to_numpy(dtype=float)
+        f = _results["pdf"].to_numpy(dtype=float)
+        Pk = _results["P_net_kW"].to_numpy(dtype=float)
+        dv = float(v[1] - v[0]) if len(v) > 1 else 0.05
+
+        # 1) PDF + CDF
+        cdf = np.clip(np.cumsum(f) * dv, 0, 1)
+        fig_pdfcdf = go.Figure()
+        fig_pdfcdf.add_trace(go.Scatter(x=v, y=f, mode="lines", name="PDF f(v)"))
+        fig_pdfcdf.add_trace(go.Scatter(x=v, y=cdf, mode="lines", name="CDF F(v)", yaxis="y2"))
+        fig_pdfcdf.update_layout(yaxis=dict(title="f(v)"),
+                                 yaxis2=dict(title="F(v)", overlaying="y", side="right"))
+        for thr in [3, 5, 8, 10]:
+            fig_pdfcdf.add_vline(x=thr, line_dash="dot", line_color=GRAY_2)
+        fig_pdfcdf = apply_plotly_theme(fig_pdfcdf, "Weibull — PDF y CDF", "v [m/s]", "f(v)", height=330)
+        st.plotly_chart(fig_pdfcdf, use_container_width=True)
+
+        # 2) Contribución al AEP por velocidad (%)
+        if "E_kWh_bin" in _results.columns and _results["E_kWh_bin"].notna().any():
+            e = _results["E_kWh_bin"].fillna(0).to_numpy()
+            share = (e / e.sum() * 100.0) if e.sum() > 0 else e
+            fig_share = px.area(x=v, y=share)
+            fig_share = apply_plotly_theme(fig_share, "Contribución al AEP por velocidad", "v [m/s]", "% del AEP", height=330)
+            st.plotly_chart(fig_share, use_container_width=True)
+
+        # 3) Potencia esperada vs nominal
+        y_nom_kw = pc_df["P_KW"] if "P_KW" in pc_df.columns else (pc_df["P_W"] / 1000.0)
+        fig_pv2 = go.Figure()
+        fig_pv2.add_trace(go.Scatter(x=v, y=Pk, mode="lines", name="P_net(v) esperada"))
+        fig_pv2.add_trace(go.Scatter(x=pc_df["v_m_s"], y=y_nom_kw, mode="lines+markers",
+                                     name="Curva nominal P(v)", line=dict(width=2)))
+        fig_pv2 = apply_plotly_theme(fig_pv2, "Potencia esperada vs nominal", "v [m/s]", "P [kW]", height=330)
+        st.plotly_chart(fig_pv2, use_container_width=True)
+
+        # 4) Curva de duración de potencia (Firm power)
+        order = np.argsort(Pk)[::-1]
+        P_sorted = Pk[order]
+        f_sorted = f[order]
+        exced_prob = np.clip(np.cumsum(f_sorted) * dv, 0, 1)
+        exced_pct = (1.0 - exced_prob) * 100.0
+        def _p_at(qpct):
+            idx = np.searchsorted(exced_pct[::-1], qpct)
+            idx = len(exced_pct) - 1 - idx
+            idx = int(np.clip(idx, 0, len(P_sorted)-1))
+            return float(P_sorted[idx])
+        P50 = _p_at(50.0)
+        P95 = _p_at(5.0)
+        fig_dur = go.Figure(go.Scatter(x=exced_pct, y=P_sorted, mode="lines", name="P vs % excedencia"))
+        fig_dur.add_vline(x=50, line_dash="dot", line_color=SECOND); fig_dur.add_hline(y=P50, line_dash="dot", line_color=SECOND)
+        fig_dur.add_vline(x=5,  line_dash="dot", line_color=ACCENT); fig_dur.add_hline(y=P95, line_dash="dot", line_color=ACCENT)
+        fig_dur.add_annotation(x=50, y=P50, text=f"P@50 ≈ {P50:.1f} kW", showarrow=False, yshift=10, font=dict(color=SECOND))
+        fig_dur.add_annotation(x=5,  y=P95, text=f"P@95 ≈ {P95:.1f} kW", showarrow=False, yshift=10, font=dict(color=ACCENT))
+        fig_dur = apply_plotly_theme(fig_dur, "Curva de duración de potencia (Firm power)", "% tiempo excedencia", "P [kW]", height=330)
+        st.plotly_chart(fig_dur, use_container_width=True)
+
+        # 5) Sensibilidad AEP(k,c) — Heatmap ±20%
+        k0, c0 = float(k_weibull), float(c_weibull)
+        k_vec = np.linspace(max(0.6, k0*0.8), k0*1.2, 25)
+        c_vec = np.linspace(max(0.5, c0*0.8), c0*1.2, 25)
+        AEP_grid = np.zeros((len(k_vec), len(c_vec)))
+        for i, kk in enumerate(k_vec):
+            for j, cc in enumerate(c_vec):
+                AEP_grid[i, j], _, _ = aep_from_weibull(
+                    pc_df, kk, cc,
+                    hours_year=8760,
+                    inverter_eff=inverter_eff,
+                    losses=losses,
+                    rho=air_density(temp_default, press_default),
+                    rho_ref=1.225
+                )
+        fig_hm = go.Figure(data=go.Heatmap(
+            z=AEP_grid/1000.0,
+            x=[f"{c:.2f}" for c in c_vec],
+            y=[f"{k:.2f}" for k in k_vec],
+            colorbar=dict(title="AEP [MWh/año]")
+        ))
+        j0 = int(np.argmin(np.abs(c_vec - c0)))
+        i0 = int(np.argmin(np.abs(k_vec - k0)))
+        fig_hm.add_scatter(x=[f"{c_vec[j0]:.2f}"], y=[f"{k_vec[i0]:.2f}"], mode="markers",
+                           marker=dict(size=10, symbol="x", line=dict(width=2, color="black")),
+                           name="k,c actuales")
+        fig_hm = apply_plotly_theme(fig_hm, "Sensibilidad AEP vs k,c (±20%)", "c [m/s]", "k [-]", height=420)
+        st.plotly_chart(fig_hm, use_container_width=True)
+
+        st.markdown(
+            f"- **P@50** ≈ **{P50:.1f} kW** · **P@95** ≈ **{P95:.1f} kW**  \n"
+            f"- Heatmap: variación de **AEP** alrededor de **k={k0:.2f}**, **c={c0:.2f} m/s**."
+        )
 
 # ---------------------------
 # PROPUESTA TÉCNICA (diseño mejorado) — con Tarifa Turbinas y nuevo KPI de Ahorro
@@ -1767,3 +2231,4 @@ st.download_button("📥 Descargar subtotales por Ítem (CSV)", sub_item_buf.get
 sub_cat_buf = io.StringIO(); sub_cat.to_csv(sub_cat_buf, index=False)
 st.download_button("📥 Descargar subtotales por Categoría (CSV)", sub_cat_buf.getvalue(),
                    file_name="cne_subtotales_categoria.csv", mime="text/csv")
+

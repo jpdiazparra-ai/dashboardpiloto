@@ -1,7 +1,15 @@
+# ==========================
+# Requisitos base — PILOTOS_ANA
+# ==========================
 streamlit==1.37.1
 pandas==2.2.2
+numpy<2.0.0
 plotly==5.22.0
 openpyxl==3.1.2
 XlsxWriter==3.2.0
 reportlab==4.2.2
 networkx==3.3
+watchdog>=3.0
+
+# (Opcional para estabilidad y lectura de CSV/Excel complejos)
+python-dateutil>=2.9

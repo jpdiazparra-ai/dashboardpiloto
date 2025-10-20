@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: proyecto-fluxial-wind
+    env: python
+    pythonVersion: 3.11.9
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run 0_Dashboard_Financiero_Proyecto.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+

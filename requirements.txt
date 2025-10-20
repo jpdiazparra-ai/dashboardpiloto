@@ -1,15 +1,23 @@
-# ==========================
-# Requisitos base — PILOTOS_ANA
-# ==========================
-streamlit==1.37.1
-pandas==2.2.2
-numpy<2.0.0
-plotly==5.22.0
-openpyxl==3.1.2
-XlsxWriter==3.2.0
-reportlab==4.2.2
-networkx==3.3
-watchdog>=3.0
+# Base de instalación estable (evita compilación)
+pip==24.2
+setuptools<70
+wheel
 
-# (Opcional para estabilidad y lectura de CSV/Excel complejos)
-python-dateutil>=2.9
+# App
+streamlit==1.38.0
+pandas==2.2.2
+numpy==1.26.4
+plotly==5.22.0
+
+# Archivos
+openpyxl==3.1.5
+xlsxwriter==3.2.0
+
+# PDF (opcional: si no generas PDF, puedes quitarlo)
+reportlab==4.1.0
+
+# Utilidades
+requests==2.32.3
+python-dateutil==2.9.0.post0
+pytz==2025.1
+toml==0.10.2

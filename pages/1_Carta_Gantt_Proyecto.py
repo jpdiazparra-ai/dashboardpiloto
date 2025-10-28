@@ -325,69 +325,185 @@ th {{ background:#fafafa; }}
 </body></html>"""
     return html.encode("utf-8")
 
-# -------- Visual (Gantt) --------
-def gantt(df, date_mode="Plan", color_by="Estado"):
+def gantt_pro(df, date_mode="Plan", color_by="Estado"):
+    """
+    Gantt estilo 'Apple-like': minimal, aireado y con interacciones útiles.
+    Compatible con Python 3.12 / Plotly 5.x / Streamlit >=1.33
+    """
     dfp = df.copy()
-    dfp["_start"]     = pd.to_datetime(dfp.get(DATE_COL_START),     errors="coerce")
-    dfp["_end_plan"]  = pd.to_datetime(dfp.get(DATE_COL_END_PLAN),  errors="coerce")
-    dfp["_end_real"]  = pd.to_datetime(dfp.get(DATE_COL_END_REAL),  errors="coerce")
+
+    # --- Fechas saneadas ---
+    dfp["_start"]     = pd.to_datetime(dfp.get(DATE_COL_START),    errors="coerce")
+    dfp["_end_plan"]  = pd.to_datetime(dfp.get(DATE_COL_END_PLAN), errors="coerce")
+    dfp["_end_real"]  = pd.to_datetime(dfp.get(DATE_COL_END_REAL), errors="coerce")
 
     dfp["_start"] = dfp["_start"].fillna(dfp["_end_real"]).fillna(dfp["_end_plan"])
-    dfp["_end"] = dfp["_end_real"] if date_mode == "Real" else dfp["_end_plan"]
-    dfp["_end"] = dfp["_end"].fillna(dfp["_end_plan"]).fillna(dfp["_end_real"]).fillna(dfp["_start"])
+    dfp["_end"]   = dfp["_end_real"] if date_mode == "Real" else dfp["_end_plan"]
+    dfp["_end"]   = dfp["_end"].fillna(dfp["_end_plan"]).fillna(dfp["_end_real"]).fillna(dfp["_start"])
 
-    bad_dur = dfp["_end"] <= dfp["_start"]
-    dfp.loc[bad_dur, "_end"] = dfp.loc[bad_dur, "_start"] + pd.Timedelta(days=1)
+    bad = dfp["_end"] <= dfp["_start"]
+    dfp.loc[bad, "_end"] = dfp.loc[bad, "_start"] + pd.Timedelta(days=1)
 
-    valid_mask = dfp["_start"].notna() & dfp["_end"].notna()
-    dfp = dfp[valid_mask].copy()
+    dfp = dfp[dfp["_start"].notna() & dfp["_end"].notna()].copy()
+    if dfp.empty:
+        return go.Figure()
 
+    # --- Orden y etiquetas ---
     dfp = dfp.sort_values(["_start", "_end", "ID"], ascending=[False, False, True])
-    cat_order = pd.unique(dfp["Tarea / Entregable"])
+    y_labels = pd.unique(dfp["Tarea / Entregable"].astype(str))
+    max_len  = max((len(s) for s in y_labels), default=12)
+    rows     = len(y_labels)
+    left_margin = min(56 + max_len * 6, 380)
+    height_px   = min(max(460, 28 * rows), 1600)
+
+    # --- Paleta inspirada en iOS/macOS ---
+    APPLE = {
+        "Planificado": "#0A84FF",   # iOS Blue
+        "En curso":    "#FF3B30",   # iOS Red
+        "Completado":  "#30D158",   # iOS Green
+        "Pendiente":   "#FF9F0A",   # iOS Orange
+        "Recurrente":  "#C5C213",   # soft yellow
+        "default":     "#8E8E93"    # iOS Gray
+    }
+    def color_estado(s):
+        s = (s or "").strip().lower()
+        if "plan"   in s: return APPLE["Planificado"]
+        if "curso"  in s: return APPLE["En curso"]
+        if "complet" in s:return APPLE["Completado"]
+        if "pend"   in s: return APPLE["Pendiente"]
+        if "recurrente" in s: return APPLE["Recurrente"]
+        return APPLE["default"]
 
     color_arg = color_by if color_by in dfp.columns else "Estado"
-    color_map = {s: status_color(s) for s in dfp["Estado"].dropna().unique()} if color_by == "Estado" else None
+    color_map = None
+    if color_by == "Estado":
+        # Mapea dinámicamente los estados presentes
+        color_map = {val: color_estado(val) for val in dfp["Estado"].dropna().unique()}
 
+    # --- Hover data seguro ---
+    hover_cols = ["ID","Fase","Línea","Responsable","Ubicación","%","Depende de","Hito (S/N)","Riesgo clave","Piloto"]
+    hover_cols = [c for c in hover_cols if c in dfp.columns]
+
+    # --- Gráfico base ---
+    
     fig = px.timeline(
         dfp,
-        x_start="_start",
-        x_end="_end",
+        x_start="_start", x_end="_end",
         y="Tarea / Entregable",
         color=color_arg,
         color_discrete_map=color_map,
-        category_orders={"Tarea / Entregable": cat_order},
-        hover_data=["ID","Fase","Línea","Responsable","Ubicación","%","Depende de","Hito (S/N)","Riesgo clave","Piloto"]
+        category_orders={"Tarea / Entregable": y_labels},
+        hover_data=hover_cols,
+        opacity=0.95
     )
-    fig.update_yaxes(autorange="reversed")
-    fig.update_layout(margin=dict(l=5, r=5, t=40, b=5), height=600, legend_title=color_by,
-                      xaxis_title="Fecha", yaxis_title=None)
-    st.session_state["gantt_adjusted"] = int(bad_dur.sum())
-    st.session_state["gantt_omitted"]  = 0
-                # Línea vertical "Hoy" (a prueba de pandas>=2.2 / plotly)
+
+    # --- Hovertemplate: limpio y consistente ---
+    dfp["dur_dias"] = (dfp["_end"] - dfp["_start"]).dt.days.clip(lower=1)
+    hovertemplate = (
+        "<b>%{y}</b><br>"
+        "Fase: %{customdata[0]}<br>" if "Fase" in hover_cols else "<b>%{y}</b><br>"
+    )
+    # Asignamos un customdata mínimo: (Fase, Estado, ID, Duración, %)
+    safe_pct = pd.to_numeric(dfp.get("%", 0), errors="coerce").fillna(0).astype(float)
+    fig.update_traces(
+        customdata=np.stack([
+            dfp.get("Fase", pd.Series([""]*len(dfp))).astype(str),
+            dfp.get("Estado", pd.Series([""]*len(dfp))).astype(str),
+            dfp.get("ID",    pd.Series([""]*len(dfp))),
+            dfp["dur_dias"].astype(int),
+            safe_pct.round(0)
+        ], axis=1),
+        hovertemplate="<b>%{y}</b><br>"
+                      "Estado: %{customdata[1]} · ID: %{customdata[2]}<br>"
+                      "Inicio: %{x|%Y-%m-%d}<br>"
+                      "Fin: %{x|%Y-%m-%d}<extra>Duración: %{customdata[3]} días · Avance: %{customdata[4]}%</extra>"
+    )
+
+    # --- Línea de Hoy + etiqueta ---
     hoy_pd  = pd.Timestamp(st.session_state.get("today", pd.Timestamp.today().date()))
-    hoy_iso = hoy_pd.strftime("%Y-%m-%d")  # pasar como string evita operaciones datetime
-
-    # Línea
+    hoy_iso = hoy_pd.strftime("%Y-%m-%d")
     fig.add_shape(
-        type="line",
-        x0=hoy_iso, x1=hoy_iso, y0=0, y1=1,
-        xref="x", yref="paper",
-        line=dict(dash="dot", width=2, color="#111827")
+        type="line", x0=hoy_iso, x1=hoy_iso, y0=0, y1=1, xref="x", yref="paper",
+        line=dict(dash="dot", width=2, color="#1C1C1E")  # dark gray
     )
-
-    # Etiqueta
     fig.add_annotation(
-        x=hoy_iso, y=1.02,
-        xref="x", yref="paper",
-        text="Hoy",
-        showarrow=False,
-        font=dict(size=12, color="#111827"),
-        bgcolor="white"
+        x=hoy_iso, y=1.02, xref="x", yref="paper",
+        text="Hoy", showarrow=False,
+        font=dict(size=12, color="#1C1C1E"),
+        bgcolor="rgba(255,255,255,0.7)"
     )
 
+    # --- Milestones (Hito = 'S') como puntos al final ---
+    if "Hito (S/N)" in dfp.columns:
+        hitos = dfp[dfp["Hito (S/N)"].astype(str).str.upper().eq("S")].copy()
+        if not hitos.empty:
+            fig.add_trace(go.Scatter(
+                x=hitos["_end"], y=hitos["Tarea / Entregable"],
+                mode="markers",
+                marker=dict(size=10, symbol="diamond", line=dict(width=1, color="#1C1C1E")),
+                name="Hito",
+                hovertext=hitos["Tarea / Entregable"],
+                hoverinfo="text"
+            ))
 
+    # --- Resalte sutil de atrasadas (borde) ---
+    if "Estado" in dfp.columns:
+        late_mask = (dfp["_end_plan"] < hoy_pd) & (~dfp["Estado"].str.lower().str.contains("complet"))
+        # No existe “border” por barra en timeline, usamos ligera opacidad +
+        # color más saturado si está atrasada (truco visual)
+        for i, tr in enumerate(fig.data):
+            try:
+                # Solo aplica a las barras (no a milestones)
+                if getattr(tr, "orientation", "h") == "h":
+                    sel = late_mask[tr.y].values if isinstance(tr.y, (list, np.ndarray, pd.Series)) else None
+            except Exception:
+                sel = None
+            # Si no logramos aplicar por barra, mantenemos estilo base.
+        # (Plotly no permite borde por barra en timeline; el truco visual anterior suele bastar)
+
+    # --- Rango/Zoom y grilla suave ---
+    fig.update_xaxes(
+        rangeselector=dict(
+            buttons=list([
+                dict(count=1, label="1m", step="month", stepmode="backward"),
+                dict(count=3, label="3m", step="month", stepmode="backward"),
+                dict(count=6, label="6m", step="month", stepmode="backward"),
+                dict(step="year", stepmode="todate", label="YTD"),
+                dict(count=1, step="year", stepmode="backward", label="1y"),
+                dict(step="all", label="All")
+            ])
+        ),
+        rangeslider=dict(visible=True),
+        showgrid=True,
+        gridcolor="rgba(60,60,67,0.08)"
+    )
+    fig.update_yaxes(autorange="reversed", automargin=True, showticklabels=True)
+
+    # --- Layout “Apple-like” ---
+    fig.update_layout(
+        height=height_px,
+        margin=dict(l=left_margin, r=32, t=36, b=18),
+        plot_bgcolor="#FBFBFD",
+        paper_bgcolor="#FFFFFF",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=1.02,
+            xanchor="right",  x=1,
+            bgcolor="rgba(255,255,255,0.6)",
+            borderwidth=0
+        ),
+        xaxis_title=None, yaxis_title=None
+    )
+
+    # Guardar métricas en sesión
+    st.session_state["gantt_adjusted"] = int(bad.sum())
+    st.session_state["gantt_omitted"]  = 0
 
     return fig
+
+
+# Back-compat: cualquier llamada a 'gantt' usa la versión pro
+gantt = gantt_pro
 
 def tune_gantt_for_export(fig):
     """Copia la figura de Gantt y la ajusta para exportación (más margen/altura)."""
@@ -462,25 +578,110 @@ fdf = df.copy()
 st.title("🚀 Tablero Proyecto Eólico")
 st.caption("Línea de tiempo, KPIs, ruta crítica y riesgos")
 
+# ======================
+# 🧭 HEADER KPIs – Estilo Apple
+# ======================
+
+# --- Métricas base ---
 total = len(fdf)
 done = (fdf["Estado"].str.contains("Complet", case=False, na=False)).sum()
 in_course = (fdf["Estado"].str.contains("curso", case=False, na=False)).sum()
-planned = (fdf["Estado"].str.contains("Planific", case=False, na=False)).sum() + (fdf["Estado"].str.contains("Recurrente", case=False, na=False)).sum()
+planned = (fdf["Estado"].str.contains("Planific", case=False, na=False)).sum() + \
+           (fdf["Estado"].str.contains("Recurrente", case=False, na=False)).sum()
 pending = (fdf["Estado"].str.contains("Pend", case=False, na=False)).sum()
-late = ((fdf[DATE_COL_END_PLAN] < pd.to_datetime(st.session_state["today"]))
-        & (~fdf["Estado"].str.contains("Complet", case=False, na=False))).sum()
-milestones = (fdf["Hito (S/N)"].astype(str).str.upper() == "S").sum() if "Hito (S/N)" in fdf.columns else 0
+late = ((fdf[DATE_COL_END_PLAN] < pd.to_datetime(st.session_state["today"])) &
+        (~fdf["Estado"].str.contains("Complet", case=False, na=False))).sum()
 progress_avg = np.nanmean(pd.to_numeric(fdf["%"], errors="coerce")) if "%" in fdf.columns else np.nan
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Tareas totales", total)
-c2.metric("Completadas", done)
-c3.metric("En curso", in_course)
-c4.metric("Planificadas", planned)
-c5.metric("Pendientes", pending)
-c6.metric("Atrasadas", late)
+# --- Estilo CSS Apple-like ---
+st.markdown("""
+<style>
+.kpi-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 28px;
+  margin-top: 10px;
+  margin-bottom: 18px;
+}
+.kpi-box {
+  flex: 1;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%);
+  border: 1px solid #E5E7EB;
+  border-radius: 20px;
+  padding: 18px 22px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: all 0.25s ease;
+}
+.kpi-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.06);
+}
+.kpi-label {
+  font-size: 0.9rem;
+  color: #6B7280;
+  letter-spacing: -0.2px;
+}
+.kpi-value {
+  font-size: 2.3rem;
+  font-weight: 600;
+  color: #111827;
+  margin-top: -2px;
+}
+.kpi-sub {
+  font-size: 0.8rem;
+  color: #9CA3AF;
+  margin-top: 2px;
+}
+.progress-wrapper {
+  margin-top: 14px;
+  padding: 0 2px;
+}
+.progress-label {
+  font-size: 0.85rem;
+  color: #374151;
+  margin-bottom: 4px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- HTML render ---
+st.markdown(f"""
+<div class="kpi-container">
+  <div class="kpi-box">
+    <div class="kpi-label">Tareas totales</div>
+    <div class="kpi-value">{total}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Completadas</div>
+    <div class="kpi-value">{done}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">En curso</div>
+    <div class="kpi-value">{in_course}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Planificadas</div>
+    <div class="kpi-value">{planned}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Pendientes</div>
+    <div class="kpi-value">{pending}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Atrasadas</div>
+    <div class="kpi-value" style="color:#DC2626;">{late}</div>
+  </div>
+</div>
+
+<div class="progress-wrapper">
+  <div class="progress-label">Avance promedio: {progress_avg:.0f}%</div>
+</div>
+""", unsafe_allow_html=True)
+
 if not np.isnan(progress_avg):
-    st.progress(float(progress_avg)/100.0, text=f"Avance promedio: {progress_avg:.0f}%")
+    st.progress(float(progress_avg)/100.0)
+
 
 # -------- Dependencias / Grafo --------
 def build_graph(df):
@@ -588,187 +789,390 @@ tab_timeline, tab_burnup, tab_crit, tab_risk, tab_table = st.tabs(
     ["📅 Línea de tiempo", "📈 Burn-up / Avance", "🧩 Ruta crítica", "⚠️ Riesgos", "📋 Tabla"]
 )
 
+# ======================
+# 📅 LÍNEA DE TIEMPO
+# ======================
 with tab_timeline:
     st.subheader("Gantt")
-    colopt1, colopt2 = st.columns([1,2])
-    with colopt1:
-        mode = st.radio("Fechas", ["Plan", "Real"], horizontal=True, key="mode_radio")
-    with colopt2:
-        color_by = st.radio("Color por", ["Estado", "Piloto"], horizontal=True, key="color_radio")
 
-    fig_gantt = gantt(fdf, date_mode=mode, color_by=color_by)
-    st.plotly_chart(fig_gantt, use_container_width=True, key="gantt_display")
+    col_fase, col_mode, col_color = st.columns([6, 2, 2])
 
-    # Aviso bajo el gráfico
-    adj = st.session_state.get("gantt_adjusted", 0)
-    om  = st.session_state.get("gantt_omitted", 0)
-    if adj or om:
-        st.caption(f"🔎 Ajustadas: {adj} tareas con duración 0/negativa · Omitidas: {om} sin fechas válidas.")
-
-    # --- Exportación (PDF/HTML) usando una copia ajustada del Gantt ---
-    fig_gantt_export = tune_gantt_for_export(fig_gantt)   # copia con más margen/altura
-    fig_burn_pdf = build_burnup_fig(fdf)                  # usa filtro aplicado
-
-    pdf_bytes = make_pdf_summary(
-        df, fdf,
-        fig_gantt=fig_gantt_export,
-        fig_burn=fig_burn_pdf,
-        project_title="Tablero Proyecto Eólico"
-    )
-    if pdf_bytes:
-        st.download_button(
-            "📄 Descargar resumen PDF",
-            data=pdf_bytes,
-            file_name=f"Resumen_proyecto_{pd.Timestamp.now():%Y%m%d}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            key="dl_pdf"
+    with col_fase:
+        _fases = (
+            fdf["Fase"].astype(str).str.strip()
+            .replace({"nan": "", "None": "", "": np.nan}).dropna()
         )
+        fases = sorted(_fases.unique().tolist())
+
+        ICONO_FASE = {
+            "Instalación Turbina": "🌀",
+            "Suministro y equipamiento mecanico": "⚙️",
+            "Suministro y equipamiento eléctrico": "🔌",
+            "Protección intelectual": "🧠",
+            "Levantamiento de capital": "💰",
+            "Gobernanza": "🏛️",
+        }
+        def icono_para(f: str) -> str:
+            f_low = f.lower()
+            if "instal" in f_low or "montaje" in f_low: return "🛠️"
+            if "suministro" in f_low and "eléct" in f_low: return "🔌"
+            if "suministro" in f_low or "mec" in f_low: return "⚙️"
+            if "intelect" in f_low or "patent" in f_low: return "🧠"
+            if "capital" in f_low or "financ" in f_low: return "💰"
+            if "gobern" in f_low or "corporativ" in f_low: return "🏛️"
+            return "📌"
+        def etiqueta(f): return f"{ICONO_FASE.get(f, icono_para(f))} {f}"
+
+        st.markdown("""
+        <style>
+          div[data-baseweb="radio"] > div { gap: 12px; flex-wrap: wrap; }
+          div[role="radiogroup"] > label {
+            border: 1px solid #D0D5DD; border-radius: 14px; padding: 6px 12px;
+            background: #FFFFFF; box-shadow: 0 1px 2px rgba(16,24,40,.04);
+          }
+          div[role="radiogroup"] > label[data-checked="true"] {
+            border-color: #1D4ED8; background: #EFF6FF;
+          }
+        </style>
+        """, unsafe_allow_html=True)
+        opciones = ["🟢 Todas"] + [etiqueta(f) for f in fases]
+        sel = st.radio("Filtrar por Fase", opciones, horizontal=True, key="timeline_fase_radio")
+
+    with col_mode:
+        mode = st.radio("Fechas", ["Plan", "Real"], horizontal=True, key="timeline_mode_radio")
+
+    with col_color:
+        color_by = st.radio("Color por", ["Estado", "Piloto"], horizontal=True, key="timeline_color_radio")
+
+    # Filtrado por fase
+    if sel.startswith("🟢"):
+        fdf_plot = fdf.copy()
     else:
-        html_bytes = make_html_summary(
-            df, fdf,
-            fig_gantt=fig_gantt_export,
-            fig_burn=fig_burn_pdf,
-            project_title="Tablero Proyecto Eólico"
-        )
-        st.download_button(
-            "🌐 Descargar resumen HTML (imprimir → PDF)",
-            data=html_bytes,
-            file_name=f"Resumen_proyecto_{pd.Timestamp.now():%Y%m%d}.html",
-            mime="text/html",
-            use_container_width=True,
-            key="dl_html"
-        )
+        fase_sel = sel.split(" ", 1)[1]
+        fdf_plot = fdf[fdf["Fase"].astype(str).str.strip() == fase_sel].copy()
 
+    if fdf_plot.empty:
+        st.info("No hay tareas para la fase seleccionada.")
+    else:
+        fig_gantt = gantt_pro(fdf_plot, date_mode=mode, color_by=color_by)
+        st.plotly_chart(fig_gantt, use_container_width=True, key="timeline_gantt")
+
+        adj = st.session_state.get("gantt_adjusted", 0)
+        om  = st.session_state.get("gantt_omitted", 0)
+        if adj or om:
+            st.caption(f"🔎 Ajustadas: {adj} tareas con duración 0/negativa · Omitidas: {om} sin fechas válidas.")
+
+        # Export
+        fig_gantt_export = tune_gantt_for_export(fig_gantt)
+        fig_burn_pdf = build_burnup_fig(fdf_plot)
+        pdf_bytes = make_pdf_summary(df, fdf_plot, fig_gantt=fig_gantt_export, fig_burn=fig_burn_pdf,
+                                     project_title="Tablero Proyecto Eólico")
+        if pdf_bytes:
+            st.download_button("📄 Descargar resumen PDF", data=pdf_bytes,
+                               file_name=f"Resumen_proyecto_{pd.Timestamp.now():%Y%m%d}.pdf",
+                               mime="application/pdf", use_container_width=True, key="timeline_dl_pdf")
+        else:
+            html_bytes = make_html_summary(df, fdf_plot, fig_gantt=fig_gantt_export, fig_burn=fig_burn_pdf,
+                                           project_title="Tablero Proyecto Eólico")
+            st.download_button("🌐 Descargar resumen HTML (imprimir → PDF)", data=html_bytes,
+                               file_name=f"Resumen_proyecto_{pd.Timestamp.now():%Y%m%d}.html",
+                               mime="text/html", use_container_width=True, key="timeline_dl_html")
+
+# ======================
+# 📈 BURN-UP / AVANCE
+# ======================
 with tab_burnup:
-    st.subheader("Burn-up de tareas completadas")
-    df_burn = fdf.copy()
-    df_burn["_fecha_done"] = df_burn[DATE_COL_END_REAL].fillna(df_burn[DATE_COL_END_PLAN])
-    df_burn = df_burn.dropna(subset=["_fecha_done"]).sort_values("_fecha_done")
-    if not df_burn.empty:
-        daily = df_burn.groupby("_fecha_done")["ID"].count().rename("Completadas_día")
-        cum = daily.cumsum().rename("Completadas_acum").to_frame()
-        cum["Totales"] = len(fdf)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=cum.index, y=cum["Completadas_acum"], mode="lines+markers", name="Completadas acum"))
-        fig.add_trace(go.Scatter(x=cum.index, y=cum["Totales"], mode="lines", name="Total tareas", line=dict(dash="dash")))
-        fig.update_layout(height=450, margin=dict(l=5, r=5, t=30, b=5))
-        st.plotly_chart(fig, use_container_width=True, key="burnup_chart")
-    else:
-        st.info("Aún no hay tareas con fecha de término para graficar el burn-up.")
+    st.subheader("Burn-up y velocidad")
 
+    # 1) Burn-up acumulado (completadas vs total)
+    fig_burn = build_burnup_fig(fdf)
+    if fig_burn:
+        st.plotly_chart(fig_burn, use_container_width=True, key="burn_burnup")
+
+    # 2) Avance por fase (promedio %) + contribución completadas
+    left, right = st.columns(2)
+    with left:
+        df_phase = fdf.copy()
+        df_phase["%"] = pd.to_numeric(df_phase["%"], errors="coerce")
+        grp = (df_phase.groupby("Fase", dropna=False)["%"]
+               .mean().sort_values(ascending=False).reset_index())
+        grp["%"] = grp["%"].fillna(0).round(1)
+        fig1 = px.bar(grp, x="Fase", y="%", title="Avance promedio por Fase",
+                      text="%", height=340)
+        fig1.update_traces(textposition="outside")
+        fig1.update_layout(xaxis_title=None, yaxis_title="%", margin=dict(l=10,r=10,t=50,b=10))
+        st.plotly_chart(fig1, use_container_width=True, key="burn_by_phase")
+
+    with right:
+        done_by_phase = (fdf[fdf["Estado"].str.contains("complet", case=False, na=False)]
+                         .groupby("Fase", dropna=False)["ID"].count().reset_index(name="Completadas"))
+        done_by_phase = done_by_phase.sort_values("Completadas", ascending=False)
+        fig2 = px.bar(done_by_phase, x="Fase", y="Completadas",
+                      title="Tareas completadas por Fase", height=340)
+        fig2.update_layout(xaxis_title=None, margin=dict(l=10,r=10,t=50,b=10))
+        st.plotly_chart(fig2, use_container_width=True, key="burn_done_phase")
+
+    # 3) Velocidad semanal (tareas completadas/semana) + proyección lineal simple
+    dfc = fdf.copy()
+    dfc["_fecha_done"] = dfc[DATE_COL_END_REAL].fillna(dfc[DATE_COL_END_PLAN])
+    dfc = dfc.dropna(subset=["_fecha_done"])
+    if not dfc.empty:
+        dfc["week"] = dfc["_fecha_done"].dt.to_period("W").apply(lambda p: p.start_time)
+        weekly = dfc.groupby("week")["ID"].count().rename("Completadas_semana").reset_index()
+        fig3 = px.bar(weekly, x="week", y="Completadas_semana",
+                      title="Velocidad semanal (tareas/semana)", height=340)
+        fig3.update_layout(xaxis_title="Semana", yaxis_title="Tareas", margin=dict(l=10,r=10,t=50,b=10))
+        st.plotly_chart(fig3, use_container_width=True, key="burn_velocity")
+
+# ======================
+# 🧩 RUTA CRÍTICA
+# ======================
 with tab_crit:
-    st.subheader("Ruta crítica (por duración planificada)")
-    try:
-        graf_vacio = (G is None or len(G) == 0)
-    except Exception:
-        graf_vacio = True
+    st.subheader("Ruta crítica (según dependencias y duración plan)")
 
-    if graf_vacio:
-        path, total_dur, invalid = critical_path_fallback(fdf)
-    else:
-        path, total_dur = longest_path_by_duration(G)
+    # — Cálculo ruta crítica (grafo si es posible; si no, fallback) —
+    try:
+        path_ids, total_len = longest_path_by_duration(G)
         invalid = []
-
-    if path:
-        df_unique = fdf.dropna(subset=["ID"]).drop_duplicates(subset=["ID"], keep="first").copy()
-        df_path = df_unique[df_unique["ID"].astype(int).isin(path)].copy()
-        df_path["ID"] = df_path["ID"].astype(int)
-        df_path["__order"] = pd.Categorical(df_path["ID"], categories=path, ordered=True)
-        df_path = df_path.sort_values("__order")
-
-        cols_needed = ["Tarea / Entregable", DATE_COL_START, DATE_COL_END_PLAN, "DuraciónPlan(d)"]
-        cols_needed = [c for c in cols_needed if c in df_path.columns]
-        df_path = df_path[["ID"] + cols_needed].reset_index(drop=True)
-        df_path["Orden"] = range(1, len(df_path)+1)
-
-        colA, colB = st.columns([2,1])
-        with colA:
-            st.markdown("**Secuencia (ID → Tarea)**")
-            st.table(df_path[["Orden","ID","Tarea / Entregable","DuraciónPlan(d)"]])
-        with colB:
-            st.metric("Duración total ruta crítica (días)", int(total_dur))
-
-        fig_cp = px.timeline(
-            df_path, x_start=DATE_COL_START, x_end=DATE_COL_END_PLAN, y="Tarea / Entregable",
-            color_discrete_sequence=["#d62728"]
-        )
-        fig_cp.update_yaxes(autorange="reversed")
-        fig_cp.update_layout(height=350, margin=dict(l=5, r=5, t=30, b=5), showlegend=False)
-        st.plotly_chart(fig_cp, use_container_width=True, key="critical_path_chart")
-
-        if invalid:
-            missing = sorted(set(d for _, d in invalid))
-            st.caption(f"⚠️ Dependencias ignoradas hacia IDs inexistentes: {missing}")
-    else:
-        msg = "Ruta crítica no disponible (sin dependencias válidas o hay ciclos)."
-        if graf_vacio:
-            msg += " También puede faltar 'networkx' si deseas usar el modo completo."
-        st.info(msg)
-
-with tab_risk:
-    st.subheader("Matriz de riesgos (probabilidad vs impacto)")
-    # out_degree (si no hay networkx, queda vacío)
-    try:
-        out_degree = dict(G.out_degree()) if (G is not None and len(G) > 0) else {}
+        if not path_ids:
+            path_ids, total_len, invalid = critical_path_fallback(fdf)
     except Exception:
-        out_degree = {}
+        path_ids, total_len, invalid = critical_path_fallback(fdf)
 
-    def _impact_for_id(i):
-        try:
-            is_hito = str(fdf.set_index("ID").loc[int(i), "Hito (S/N)"]).upper() == "S"
-        except Exception:
-            is_hito = False
-        deg = out_degree.get(int(i), 0)
-        return 3 if (deg >= 2 or is_hito) else (2 if deg == 1 else 1)
+    if not path_ids:
+        st.info("No fue posible calcular la ruta crítica (revisa dependencias).")
+    else:
+        # --- Construir 'crit' conservando TODAS las columnas y ordenando por ruta ---
+        crit = fdf[fdf["ID"].isin(path_ids)].copy()
+        order_map = {pid: i for i, pid in enumerate(path_ids)}
+        crit["__ord"] = crit["ID"].map(order_map)
+        crit = crit.sort_values("__ord").drop(columns="__ord")
 
-    fdf["_impact_tmp"] = fdf["ID"].map(lambda i: _impact_for_id(i) if pd.notna(i) else 1)
+        # --- Layout alineado: izquierda (tabla + mini-gantt) / derecha (kpis + grafo) ---
+        left, right = st.columns([7, 5], gap="large")
 
-    today_value = st.session_state.get("today", date.today())
-    probs, imps = [], []
-    for _, r in fdf.iterrows():
-        p, im = compute_risk(r, today_value)
-        probs.append(p); imps.append(im)
-    fdf["Probabilidad(1-3)"] = probs
-    fdf["Impacto(1-3)"] = imps
-    fdf["Severidad"] = fdf["Probabilidad(1-3)"] * fdf["Impacto(1-3)"]
+        with left:
+            # Tabla resumida (sin perder las columnas en el DataFrame base)
+            cols_tabla = [
+                "ID","Tarea / Entregable","Fase",
+                DATE_COL_START, DATE_COL_END_PLAN, "DuraciónPlan(d)","Responsable"
+            ]
+            cols_tabla = [c for c in cols_tabla if c in crit.columns]
+            st.markdown("**Tareas de la ruta crítica**")
+            st.dataframe(crit[cols_tabla], use_container_width=True, hide_index=True)
 
-    fig_r = go.Figure()
-    for i in range(1,4):
-        for j in range(1,4):
-            fig_r.add_shape(type="rect", x0=i-0.5, x1=i+0.5, y0=j-0.5, y1=j+0.5,
-                            line=dict(width=1, color="#cccccc"),
-                            fillcolor="rgba(240,240,240,0.4)")
-    fig_r.add_trace(go.Scatter(
-        x=fdf["Probabilidad(1-3)"], y=fdf["Impacto(1-3)"], mode="markers+text",
-        text=fdf["ID"].fillna("").astype(str), textposition="top center",
-        marker=dict(size=12, line=dict(width=1, color="#333"), color=fdf["Severidad"]),
-        hovertext=fdf["Tarea / Entregable"], hoverinfo="text"
-    ))
-    fig_r.update_xaxes(range=[0.5,3.5], dtick=1, title="Probabilidad")
-    fig_r.update_yaxes(range=[0.5,3.5], dtick=1, title="Impacto")
-    fig_r.update_layout(height=450, margin=dict(l=5, r=5, t=30, b=5), coloraxis_showscale=False)
-    st.plotly_chart(fig_r, use_container_width=True, key="risk_matrix_chart")
+            # Mini-Gantt (usa 'crit' completo → no faltan columnas en el hover)
+            st.caption(
+                f"Longitud total estimada: **{int(total_len)} días** · "
+                f"Tareas en ruta: **{len(path_ids)}**"
+            )
+            fig_crit = gantt_pro(crit, date_mode="Plan", color_by="Fase")
+            # Ajuste de altura para que no “empuje” la columna derecha
+            fig_crit.update_layout(height=max(360, min(26*len(crit)+180, 900)))
+            st.plotly_chart(fig_crit, use_container_width=True, key="crit_gantt")
 
-    st.markdown("**Top 10 por severidad**")
-    top_r = fdf.sort_values("Severidad", ascending=False)[[
-        "ID","Tarea / Entregable","Estado","Piloto","Probabilidad(1-3)","Impacto(1-3)","Severidad","Riesgo clave","Mitigación breve",
-        DATE_COL_END_PLAN, "%"
-    ]].head(10)
-    st.dataframe(top_r, use_container_width=True)
+        with right:
+            # KPIs rápidos de la ruta crítica
+            k1, k2 = st.columns(2)
+            k1.metric("Tareas en ruta", len(path_ids))
+            k2.metric("Duración estimada (días)", int(total_len))
 
+            # Grafo (opcional)
+            try:
+                import networkx as nx
+                import plotly.graph_objects as go
+
+                sub = G.subgraph(path_ids)
+                # Layout estable y compacto para buena alineación vertical
+                pos = nx.spring_layout(sub, seed=7, k=0.7, iterations=200)
+
+                xe, ye = [], []
+                for u, v in sub.edges():
+                    xe += [pos[u][0], pos[v][0], None]
+                    ye += [pos[u][1], pos[v][1], None]
+                edge_trace = go.Scatter(
+                    x=xe, y=ye, mode='lines', hoverinfo='none', name="Dependencias"
+                )
+
+                crit_idx = crit.set_index("ID")
+                xn, yn, text = [], [], []
+                for n in sub.nodes():
+                    xn.append(pos[n][0]); yn.append(pos[n][1])
+                    row = crit_idx.loc[n] if n in crit_idx.index else fdf.set_index("ID").loc[n]
+                    text.append(f"#{n} · {row['Tarea / Entregable']}")
+                node_trace = go.Scatter(
+                    x=xn, y=yn, mode='markers+text', textposition="top center",
+                    text=[f"#{i}" for i in sub.nodes()], hovertext=text, hoverinfo="text",
+                    marker=dict(size=14)
+                )
+
+                figg = go.Figure(data=[edge_trace, node_trace])
+                figg.update_layout(
+                    title="Grafo de la ruta crítica",
+                    height=420,
+                    xaxis=dict(visible=False), yaxis=dict(visible=False),
+                    margin=dict(l=10, r=10, t=40, b=10)
+                )
+                st.plotly_chart(figg, use_container_width=True, key="crit_graph")
+            except Exception:
+                st.caption("ℹ️ No se pudo dibujar el grafo (opcional).")
+
+            if invalid:
+                st.warning(
+                    "Se encontraron dependencias hacia IDs inexistentes: "
+                    f"{sorted(set([d for _, d in invalid]))}"
+                )
+
+# ======================
+# ⚠️ RIESGOS
+# ======================
+with tab_risk:
+    st.subheader("Riesgos (probabilidad × impacto)")
+
+    today_ts = pd.to_datetime(st.session_state.get("today", date.today()))
+    base = fdf.copy()
+    # Impacto: usa columna si existe, si no, default=2
+    if "Impacto" in base.columns:
+        base["_impact_tmp"] = pd.to_numeric(base["Impacto"], errors="coerce").fillna(2).clip(1,3)
+    else:
+        base["_impact_tmp"] = 2
+
+    pr, im = [], []
+    for _, r in base.iterrows():
+        p, ii = compute_risk(r, today_ts)
+        pr.append(p); im.append(ii)
+    base["Probabilidad"] = pr
+    base["Impacto(1-3)"] = im
+    base["Severidad"] = base["Probabilidad"] * base["Impacto(1-3)"]
+
+    # 1) Heatmap de conteo por cuadrante
+    pivot = (base.pivot_table(index="Impacto(1-3)", columns="Probabilidad", values="ID", aggfunc="count")
+                  .fillna(0).astype(int).sort_index(ascending=True))
+    fig_hm = px.imshow(pivot, text_auto=True, aspect="auto",
+                       labels=dict(x="Probabilidad", y="Impacto", color="Tareas"),
+                       title="Matriz de riesgos (nº de tareas)")
+    fig_hm.update_layout(height=360, margin=dict(l=10,r=10,t=50,b=10))
+    st.plotly_chart(fig_hm, use_container_width=True, key="risk_heatmap")
+
+    # 2) Top riesgos y próximos vencimientos
+    c1, c2 = st.columns(2)
+    with c1:
+        top = base.sort_values(["Severidad", DATE_COL_END_PLAN], ascending=[False, True]) \
+                  .head(10)[["ID","Tarea / Entregable","Fase","Severidad",DATE_COL_END_PLAN,"Responsable","Riesgo clave","Mitigación breve"]]
+        st.markdown("**Top 10 por severidad**")
+        st.dataframe(top, use_container_width=True, hide_index=True)
+
+    with c2:
+        soon = base[(base[DATE_COL_END_PLAN] >= today_ts) &
+                    (base[DATE_COL_END_PLAN] <= today_ts + pd.Timedelta(days=14)) &
+                    (~base["Estado"].str.contains("complet", case=False, na=False))]
+        soon = soon.sort_values(DATE_COL_END_PLAN)[["ID","Tarea / Entregable","Fase",DATE_COL_END_PLAN,"Responsable","Severidad"]]
+        st.markdown("**Vencen en las próximas 2 semanas (no completadas)**")
+        st.dataframe(soon, use_container_width=True, hide_index=True)
+
+    # 3) Dispersión: Fin plan vs Severidad (burbujas por %)
+    # --- Limpieza de NaN o valores inválidos para tamaño ---
+base["%"] = pd.to_numeric(base["%"], errors="coerce").fillna(0).clip(lower=0)
+# Escala mínima para que el tamaño nunca sea cero
+base["size_clean"] = base["%"].apply(lambda x: 5 if x == 0 else x)
+
+fig_sc = px.scatter(
+    base,
+    x=DATE_COL_END_PLAN,
+    y="Severidad",
+    size="size_clean",
+    color="Fase",
+    hover_data=["ID", "Tarea / Entregable", "Estado", "Responsable"],
+    title="Severidad vs. fecha fin plan (tamaño = % avance)",
+    height=360,
+)
+fig_sc.update_layout(margin=dict(l=10, r=10, t=50, b=10))
+st.plotly_chart(fig_sc, use_container_width=True, key="risk_scatter")
+
+
+# ======================
+# 📋 TABLA (completa y autosuficiente)
+# ======================
 with tab_table:
-    st.subheader("Tabla filtrada")
-    show_cols = ["ID","Piloto","Fase","Línea","Tarea / Entregable","Método","Ubicación","Responsable","Estado",
-                 DATE_COL_START, DATE_COL_END_PLAN, DATE_COL_END_REAL, "%","Depende de","Hito (S/N)",
-                 "DuraciónPlan(d)","DuraciónReal(d)"]
-    show_cols = [c for c in show_cols if c in fdf.columns]
-    st.dataframe(fdf[show_cols].sort_values([DATE_COL_START, DATE_COL_END_PLAN]), use_container_width=True)
+    st.subheader("Tabla de tareas")
 
-with st.expander("🧠 Recomendaciones de uso"):
-    st.markdown("""
-- **Fuente**: esta app lee automáticamente el CSV público de Google Sheets configurado arriba.
-- **Depende de**: usa IDs separados por coma (ej. `8,14`).
-- **Fechas reales**: al completar `Fin real`, el burn-up y el modo “Real” del Gantt reflejan avance efectivo.
-- **Campos extra sugeridos**: `Prioridad`, `NivelRiesgo`, `CostoPlan`, `CostoReal`, `CriterioAceptacion`, `EvidenciaURL`.
-    """)
+    # --- Helpers para evitar errores si faltan columnas ---
+    def col_exists(df, name): 
+        return name in df.columns
+
+    # ---- Filtros rápidos (se crean desde fdf, no desde table_df) ----
+    colA, colB, colC, colD = st.columns(4)
+    with colA:
+        estados = sorted(fdf["Estado"].dropna().unique().tolist()) if col_exists(fdf,"Estado") else []
+        f_estado = st.multiselect("Estado", estados, default=None, key="table_estado")
+    with colB:
+        fases = sorted(fdf["Fase"].dropna().unique().tolist()) if col_exists(fdf,"Fase") else []
+        f_fase = st.multiselect("Fase", fases, default=None, key="table_fase")
+    with colC:
+        resps = sorted(fdf["Responsable"].dropna().unique().tolist()) if col_exists(fdf,"Responsable") else []
+        f_resp = st.multiselect("Responsable", resps, default=None, key="table_resp")
+    with colD:
+        pilotos = sorted(fdf["Piloto"].dropna().unique().tolist()) if col_exists(fdf,"Piloto") else []
+        f_pil = st.multiselect("Piloto", pilotos, default=None, key="table_piloto")
+
+    # ---- Construcción de table_df desde fdf + filtros ----
+    table_df = fdf.copy()
+    if f_estado and col_exists(table_df,"Estado"):
+        table_df = table_df[table_df["Estado"].isin(f_estado)]
+    if f_fase and col_exists(table_df,"Fase"):
+        table_df = table_df[table_df["Fase"].isin(f_fase)]
+    if f_resp and col_exists(table_df,"Responsable"):
+        table_df = table_df[table_df["Responsable"].isin(f_resp)]
+    if f_pil and col_exists(table_df,"Piloto"):
+        table_df = table_df[table_df["Piloto"].isin(f_pil)]
+
+    # ---- Columna "_Atrasada" (plan < hoy y no completada) ----
+    hoy = pd.to_datetime(st.session_state.get("today", date.today()))
+    if col_exists(table_df, DATE_COL_END_PLAN) and col_exists(table_df, "Estado"):
+        late_mask = (table_df[DATE_COL_END_PLAN] < hoy) & (~table_df["Estado"].str.contains("complet", case=False, na=False))
+        table_df = table_df.assign(_Atrasada=np.where(late_mask, "Sí", "No"))
+    else:
+        table_df = table_df.assign(_Atrasada="")
+
+    # ---- Emojis en la etiqueta de atrasadas (opcional) ----
+    table_df["_Atrasada"] = table_df["_Atrasada"].map({"Sí": "⚠️ Sí", "No": "✅ No"}).fillna("")
+
+    # ---- Selección de columnas a mostrar (solo las que existan) ----
+    desired_cols = [
+        "ID","Fase","Línea","Tarea / Entregable","Estado","%","Responsable",
+        DATE_COL_START, DATE_COL_END_PLAN, DATE_COL_END_REAL,
+        "Depende de","Hito (S/N)","Piloto","_Atrasada"
+    ]
+    show_cols = [c for c in desired_cols if col_exists(table_df, c)]
+
+    # ---- column_config seguro (solo define lo que existe) ----
+    column_config = {}
+    if col_exists(table_df, DATE_COL_START):
+        column_config[DATE_COL_START] = st.column_config.DateColumn("Inicio (plan)")
+    if col_exists(table_df, DATE_COL_END_PLAN):
+        column_config[DATE_COL_END_PLAN] = st.column_config.DateColumn("Fin plan")
+    if col_exists(table_df, DATE_COL_END_REAL):
+        column_config[DATE_COL_END_REAL] = st.column_config.DateColumn("Fin real")
+    if col_exists(table_df, "%"):
+        column_config["%"] = st.column_config.NumberColumn("Avance", format="%.0f %%")
+    column_config["_Atrasada"] = st.column_config.TextColumn("Atrasada", help="Plan < hoy y sin completar")
+
+    # ---- Mostrar tabla principal ----
+    st.dataframe(
+        table_df[show_cols],
+        use_container_width=True,
+        hide_index=True,
+        column_config=column_config
+    )
+
+    # ---- (Opcional) Resaltar filas atrasadas con color de fondo ----
+    with st.expander("Opciones de estilo"):
+        apply_style = st.checkbox("Resaltar filas atrasadas", value=False)
+    if apply_style:
+        def _row_style_late(row):
+            return ['background-color: rgba(255,0,0,0.08)' if str(row.get('_Atrasada','')).startswith('⚠️') else '' ] * len(row)
+        try:
+            styled = table_df[show_cols].style.apply(_row_style_late, axis=1)
+            st.dataframe(styled, use_container_width=True)
+        except Exception:
+            st.info("Tu versión de Streamlit no acepta Styler en st.dataframe; mostrando tabla estándar.")

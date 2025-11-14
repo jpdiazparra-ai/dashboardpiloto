@@ -269,19 +269,19 @@ def interp_curve(x, x_tab, y_tab):
 # =========================================================
 # UI – Entradas
 # =========================================================
-st.title("🧪 VAWT 80 kW + Generador GDG-1100 (aero → mecánico → eléctrico)")
+st.title("🧪 VAWT kW + Generador (aero → mecánico → eléctrico)")
 
 with st.sidebar:
 
     # --- Geometría ---
-    with st.expander("Geometría", expanded=True):
+    with st.expander("Geometría", expanded=False):
         D = st.number_input("Diámetro D [m]",  min_value=2.0, value=14.0, step=0.5)
         H = st.number_input("Altura H [m]",    min_value=2.0, value=14.0, step=0.5)
         N = st.number_input("Nº de palas N",   min_value=2,   value=3, step=1)
         c = st.number_input("Cuerda c [m]",    min_value=0.1, value=0.80, step=0.05)
 
     # --- Operación / Control ---
-    with st.expander("Operación / Control", expanded=True):
+    with st.expander("Operación / Control", expanded=False):
         tsr = st.number_input("TSR objetivo (λ)", min_value=1.6, value=2.6, step=0.1)
         rho = st.number_input("Densidad aire ρ [kg/m³]", min_value=1.0, value=1.225, step=0.025)
         mu  = st.number_input(
@@ -322,6 +322,26 @@ with st.sidebar:
         v_min  = st.number_input("v mín [m/s]", min_value=0.5, value=4.0, step=0.5)
         v_max  = st.number_input("v máx [m/s]", min_value=v_min+0.5, value=15.0, step=0.5)
         dv     = st.number_input("Paso Δv [m/s]", min_value=0.1, value=0.5, step=0.1)
+        # --- Ruido aeroacústico (modelo simple en dB) ---
+    with st.expander("Ruido aeroacústico (dB)", expanded=False):
+        use_noise = st.checkbox("Estimar ruido (Lw / Lp)", True)
+        Lw_ref_dB = st.number_input(
+            "Lw_ref @ v_rated [dB]",
+            min_value=0.0, max_value=150.0,
+            value=100.0, step=1.0,
+            help="Nivel de potencia sonora de referencia a v_rated"
+        )
+        r_obs = st.number_input(
+            "Distancia observador [m]",
+            min_value=1.0, max_value=1000.0,
+            value=50.0, step=5.0
+        )
+        n_noise = st.number_input(
+            "Exponente n (U_tip^n)",
+            min_value=1.0, max_value=8.0,
+            value=5.0, step=0.5,
+            help="Sensibilidad del ruido a la velocidad de punta"
+        )
 
     # --- Tren de potencia / Generador ---
     with st.expander("Tren de potencia / Generador", expanded=False):
@@ -474,6 +494,34 @@ Cp_el = np.divide(
 Re_mid = np.zeros_like(v_grid)
 if mu > 0:
     Re_mid = rho * U_tip * c / mu
+# ----------------------------------------------------------
+# Ruido aeroacústico (dB) – modelo simple basado en U_tip
+# ----------------------------------------------------------
+Lw_dB = np.full_like(v_grid, np.nan, dtype=float)
+Lp_dB = np.full_like(v_grid, np.nan, dtype=float)
+
+if 'use_noise' in globals() and use_noise:
+    # U_tip de referencia a v_rated
+    if v_grid[0] <= v_rated <= v_grid[-1]:
+        U_tip_ref = float(np.interp(v_rated, v_grid, U_tip))
+    else:
+        U_tip_ref = float(U_tip[-1])
+
+    U_ratio = np.divide(
+        U_tip,
+        max(U_tip_ref, 1e-3),
+        out=np.ones_like(U_tip),
+        where=(U_tip_ref > 0)
+    )
+
+    # Nivel de potencia sonora
+    Lw_dB = Lw_ref_dB + 10.0 * n_noise * np.log10(
+        np.maximum(U_ratio, 1e-6)
+    )
+
+    # Nivel de presión sonora a r_obs
+    Lp_dB = Lw_dB - 20.0 * np.log10(max(r_obs, 1.0)) - 11.0
+
 
 # Frecuencias 1P / 3P
 f_1P = rpm_rotor / 60.0
@@ -507,6 +555,9 @@ df = pd.DataFrame({
     "P_el (kW)":         np.round(P_el_ac / 1000.0, 2),
     "P_out (clip) kW":   np.round(P_el_ac_clip / 1000.0, 2),
     "I_est (A)":         np.round(I_A, 1),
+    "Lw (dB)":           np.round(Lw_dB, 1),
+    "Lp_obs (dB)":       np.round(Lp_dB, 1),
+
 })
 
 # =========================================================
@@ -614,16 +665,74 @@ with tab_pala:
     )
 
 # =========================================================
-# Tabla y descarga
+# Tabla de resultados + filtro tipo píldoras
 # =========================================================
+# Definición de módulos (grupos de columnas)
+modulos_columnas = {
+    "Rotor (aero + dinámica)": [
+        "v (m/s)", "λ_efectiva", "U_tip (m/s)",
+        "Re (mid-span)", "Cp(λ_efectiva)", "Cp_aero_equiv",
+        "rpm_rotor", "T_rotor (N·m)", "f_1P (Hz)", "f_3P (Hz)"
+    ],
+    "Tren mecánico": [
+        "v (m/s)", "P_aero (kW)", "P_mec_gen (kW)",
+        "Cp_shaft_equiv"
+    ],
+    "Generador + eléctrico": [
+        "v (m/s)", "rpm_gen", "P_gen_curve (kW)",
+        "V_LL (V)", "V_LL (Ke) [V]", "f_e (Hz)",
+        "η_gen (curve)", "T_gen (N·m)",
+        "P_el (kW)", "P_out (clip) kW", "I_est (A)",
+        "Cp_el_equiv"
+    ],
+    "Ruido": [
+        "v (m/s)", "Lw (dB)", "Lp_obs (dB)"
+    ],
+}
+
+# Estado: módulo activo (por defecto: Todas)
+if "modulo_tabla" not in st.session_state:
+    st.session_state["modulo_tabla"] = "Todas"
+
 st.subheader("📊 Tabla de resultados por viento")
-st.dataframe(df, use_container_width=True)
+
+# --- Fila de botones tipo píldora ---
+opciones = [
+    ("Todas",            "🟢 Todas",           "⚪ Todas"),
+    ("Rotor (aero + dinámica)", "⚙️ Rotor",    "⚪ Rotor"),
+    ("Tren mecánico",    "🔧 Tren mecánico",   "⚪ Tren mecánico"),
+    ("Generador + eléctrico", "⚡ Generador",  "⚪ Generador"),
+    ("Ruido",            "🧪 Ruido",           "⚪ Ruido"),
+]
+
+cols_btn = st.columns(len(opciones))
+for (nombre, label_activo, label_inactivo), col in zip(opciones, cols_btn):
+    with col:
+        activo = (st.session_state["modulo_tabla"] == nombre)
+        label = label_activo if activo else label_inactivo
+        if st.button(label, key=f"btn_mod_{nombre}"):
+            st.session_state["modulo_tabla"] = nombre
+
+# --- Selección de columnas según módulo activo ---
+mod_sel = st.session_state["modulo_tabla"]
+
+if mod_sel == "Todas":
+    df_view = df
+else:
+    cols = [c for c in modulos_columnas.get(mod_sel, []) if c in df.columns]
+    # fallback si por algún motivo no hay columnas válidas
+    df_view = df[cols] if cols else df
+
+# --- Mostrar SIEMPRE una sola tabla (filtrada o completa) ---
+st.dataframe(df_view, use_container_width=True)
+
 st.download_button(
-    "📥 Descargar CSV",
-    data=df.to_csv(index=False).encode("utf-8"),
-    file_name="vawt_gdg1100_resultados.csv",
+    f"📥 Descargar CSV – vista: {mod_sel}",
+    data=df_view.to_csv(index=False).encode("utf-8"),
+    file_name=f"vawt_resultados_{mod_sel.replace(' ', '_')}.csv",
     mime="text/csv"
 )
+
 
 # =========================================================
 # Gráficos + comentarios técnicos
@@ -861,6 +970,34 @@ st.markdown("""
   </p>
 </div>
 """, unsafe_allow_html=True)
+if use_noise:
+    st.subheader("🔈 Ruido estimado vs velocidad de viento")
+    figNoise = px.line(
+        df,
+        x="v (m/s)",
+        y=["Lw (dB)", "Lp_obs (dB)"],
+        markers=True
+    )
+    figNoise.update_layout(
+        xaxis_title="v (m/s)",
+        yaxis_title="Nivel sonoro [dB]",
+        legend_title="Magnitud"
+    )
+    st.plotly_chart(figNoise, use_container_width=True)
+
+    st.markdown(f"""
+    <div class="comment-box">
+      <div class="comment-title">🔍 Interpretación técnica (ruido)</div>
+      <p>
+      El modelo de ruido usa como referencia un nivel <strong>Lw_ref = {Lw_ref_dB:.0f} dB</strong> a 
+      <em>v_rated</em> y escala el nivel con una ley de potencia de la velocidad de punta
+      (<code>U_tip^n</code>, con n={n_noise:.1f}). A partir de Lw se estima el nivel de presión
+      sonora <strong>Lp</strong> percibido a una distancia de <strong>{r_obs:.0f} m</strong>,
+      asumiendo propagación en campo libre.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
 
 # =========================================================
 # Weibull (opcional)

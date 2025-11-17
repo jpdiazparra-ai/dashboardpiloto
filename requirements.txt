@@ -15,6 +15,7 @@ xlsxwriter==3.2.0
 
 # --- PDF (opcional) ---
 reportlab==4.1.0
+kaleido
 
 # --- Utilidades comunes ---
 requests==2.32.3

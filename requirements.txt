@@ -15,8 +15,7 @@ xlsxwriter==3.2.0
 
 # --- PDF (opcional) ---
 reportlab==4.1.0
-kaleido
-
+kaleido==0.2.1
 # --- Utilidades comunes ---
 requests==2.32.3
 python-dateutil==2.9.0.post0

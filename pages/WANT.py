@@ -654,7 +654,7 @@ with st.sidebar:
             help="Sensibilidad del ruido a la velocidad de punta"
         )
 
-    # 🔧 Tren de potencia / Generador
+    # --- Tren de potencia / Generador ---
     with st.expander("Tren de potencia / Generador", expanded=False):
 
         # rpm sugerida por aerodinámica
@@ -719,29 +719,30 @@ with st.sidebar:
         P_nom_kW  = st.number_input("P_nom [kW]", min_value=5.0, value=80.0, step=5.0)
         T_gen_max = st.number_input("T_gen máx [N·m] (opcional)", min_value=0.0, value=float(GDG_RATED_T_Nm), step=100.0)
 
-        # IEC 61400-2 – límites de diseño
-        with st.expander("Límites IEC 61400-2 (diseño)", expanded=False):
-            rpm_rotor_max_iec = st.number_input(
-                "rpm_rotor máx IEC",
-                min_value=10.0,
-                value=40.0,
-                step=1.0,
-                help="Límite estructural de rpm del rotor definido por IEC 61400-2 (fatiga, estabilidad)."
-            )
-            T_rotor_max_iec = st.number_input(
-                "T_rotor máx IEC [N·m]",
-                min_value=1000.0,
-                value=20000.0,
-                step=500.0,
-                help="Torque máximo admisible en el eje rotor según diseño estructural IEC-61400-2."
-            )
-            v_shutdown_iec = st.number_input(
-                "v_shutdown IEC [m/s]",
-                min_value=v_rated,
-                value=v_cut_out,
-                step=0.5,
-                help="Velocidad de viento a la cual el sistema debe ejecutar parada segura (shutdown)."
-            )
+    # --- IEC 61400-2 – límites de diseño (expander separado, NO anidado) ---
+    with st.expander("Límites IEC 61400-2 (diseño)", expanded=False):
+        rpm_rotor_max_iec = st.number_input(
+            "rpm_rotor máx IEC",
+            min_value=10.0,
+            value=40.0,
+            step=1.0,
+            help="Límite estructural de rpm del rotor definido por IEC 61400-2 (fatiga, estabilidad)."
+        )
+        T_rotor_max_iec = st.number_input(
+            "T_rotor máx IEC [N·m]",
+            min_value=1000.0,
+            value=20000.0,
+            step=500.0,
+            help="Torque máximo admisible en el eje rotor según diseño estructural IEC-61400-2."
+        )
+        v_shutdown_iec = st.number_input(
+            "v_shutdown IEC [m/s]",
+            min_value=v_rated,
+            value=v_cut_out,
+            step=0.5,
+            help="Velocidad de viento a la cual el sistema debe ejecutar parada segura (shutdown)."
+        )
+
 
         # Weibull (opcional)
     with st.expander("Weibull (opcional)", expanded=False):

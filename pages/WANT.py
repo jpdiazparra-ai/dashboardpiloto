@@ -36,6 +36,8 @@ st.set_page_config(page_title="Diseño VAWT – Aerodinámica + Generador GDG-11
 
 
 # ====== ESTILO GLOBAL (comentarios + KPIs) ======
+
+
 st.markdown("""
 <style>
 
@@ -1391,14 +1393,361 @@ else:
 st.dataframe(
     df_view,
     use_container_width=True,
-    height=480,   # la altura real la controla también el CSS max-height
+    height=480,
+    column_config={
+
+        "v (m/s)": st.column_config.NumberColumn(
+            "v (m/s)",
+            help=(
+                "Descripción: Velocidad del viento incidente sobre el rotor.\n"
+                "Fórmula: — (dato de entrada / SCADA / Weibull).\n"
+                "Parámetros: v = velocidad del viento [m/s]."
+            )
+        ),
+
+        "rpm_rotor": st.column_config.NumberColumn(
+            "rpm_rotor",
+            help=(
+                "Descripción: Velocidad de giro del rotor.\n"
+                "Fórmula: rpm_rotor = (30 / (π · R)) · λ · v.\n"
+                "Parámetros: R = radio del rotor [m], λ = TSR objetivo/efectiva, v = velocidad del viento [m/s]."
+            )
+        ),
+
+        "rpm_gen": st.column_config.NumberColumn(
+            "rpm_gen",
+            help=(
+                "Descripción: Velocidad de giro del generador.\n"
+                "Fórmula: rpm_gen = rpm_rotor · G.\n"
+                "Parámetros: rpm_rotor = velocidad del rotor [rpm], G = relación de transmisión rpm_gen/rpm_rotor."
+            )
+        ),
+
+        "λ_efectiva": st.column_config.NumberColumn(
+            "λ_efectiva",
+            help=(
+                "Descripción: TSR efectiva del rotor (relación entre velocidad de punta y viento).\n"
+                "Fórmula: λ_efectiva = ω_rot · R / v.\n"
+                "Parámetros: ω_rot = 2π·rpm_rotor/60 [rad/s], R = radio del rotor [m], v = velocidad del viento [m/s]."
+            )
+        ),
+
+        "U_tip (m/s)": st.column_config.NumberColumn(
+            "U_tip (m/s)",
+            help=(
+                "Descripción: Velocidad de punta de pala.\n"
+                "Fórmula: U_tip = λ_efectiva · v.\n"
+                "Parámetros: λ_efectiva = TSR efectiva, v = velocidad del viento [m/s]."
+            )
+        ),
+
+        "Cp(λ_efectiva)": st.column_config.NumberColumn(
+            "Cp(λ_efectiva)",
+            help=(
+                "Descripción: Coeficiente de potencia aerodinámico del rotor en λ_efectiva.\n"
+                "Fórmula: Cp(λ) ≈ c_max · (λ/λ_opt) · exp(1 − λ/λ_opt) (modelo Cp(λ)).\n"
+                "Parámetros: c_max = Cp máximo, λ_opt = TSR óptimo, λ = λ_efectiva."
+            )
+        ),
+
+        "Cp_aero_equiv": st.column_config.NumberColumn(
+            "Cp_aero_equiv",
+            help=(
+                "Descripción: Cp equivalente de la potencia aerodinámica.\n"
+                "Fórmula: Cp_aero = P_aero / (0.5 · ρ · A · v³).\n"
+                "Parámetros: P_aero = potencia aerodinámica [W], ρ = densidad del aire [kg/m³], "
+                "A = área barrida D·H [m²], v = velocidad del viento [m/s]."
+            )
+        ),
+
+        "Cp_shaft_equiv": st.column_config.NumberColumn(
+            "Cp_shaft_equiv",
+            help=(
+                "Descripción: Cp equivalente en el eje del generador (tras pérdidas mecánicas).\n"
+                "Fórmula: Cp_shaft = P_mec_gen / (0.5 · ρ · A · v³).\n"
+                "Parámetros: P_mec_gen = potencia mecánica en eje del generador [W], ρ, A, v como antes."
+            )
+        ),
+
+        "Cp_el_equiv": st.column_config.NumberColumn(
+            "Cp_el_equiv",
+            help=(
+                "Descripción: Cp equivalente eléctrico tras todas las pérdidas hasta entrega AC (salida útil).\n"
+                "Fórmula: Cp_el = P_out / (0.5 · ρ · A · v³).\n"
+                "Parámetros: P_out = potencia eléctrica útil con clipping [W], ρ = densidad, A = D·H, v = viento."
+            )
+        ),
+
+        "Re (mid-span)": st.column_config.NumberColumn(
+            "Re (mid-span)",
+            help=(
+                "Descripción: Número de Reynolds en la sección media de la pala.\n"
+                "Fórmula: Re = ρ · U_tip · c / μ.\n"
+                "Parámetros: ρ = densidad del aire [kg/m³], U_tip = velocidad de punta [m/s], "
+                "c = cuerda de la pala [m], μ = viscosidad dinámica [Pa·s]."
+            )
+        ),
+
+        "P_aero (kW)": st.column_config.NumberColumn(
+            "P_aero (kW)",
+            help=(
+                "Descripción: Potencia aerodinámica capturada por el rotor.\n"
+                "Fórmula: P_aero = 0.5 · ρ · A · v³ · Cp(λ_efectiva).\n"
+                "Parámetros: ρ, A, v, Cp(λ_efectiva) según modelo aerodinámico."
+            )
+        ),
+
+        "P_mec_gen (kW)": st.column_config.NumberColumn(
+            "P_mec_gen (kW)",
+            help=(
+                "Descripción: Potencia mecánica disponible en el eje del generador.\n"
+                "Fórmula: P_mec_gen = P_aero · η_mec.\n"
+                "Parámetros: P_aero = potencia aerodinámica [W], η_mec = η_rodamientos · η_caja."
+            )
+        ),
+
+        "P_gen_curve (kW)": st.column_config.NumberColumn(
+            "P_gen_curve (kW)",
+            help=(
+                "Descripción: Potencia nominal del generador según su curva P(rpm).\n"
+                "Fórmula: P_gen_curve = interp_P(rpm_gen).\n"
+                "Parámetros: rpm_gen = velocidad del generador [rpm], curva P_kW(rpm) de datasheet/CSV."
+            )
+        ),
+
+        "η_gen (curve)": st.column_config.NumberColumn(
+            "η_gen (curve)",
+            help=(
+                "Descripción: Eficiencia instantánea del generador.\n"
+                "Fórmula: η_gen = P_el_gen / P_mec_gen.\n"
+                "Parámetros: P_el_gen = potencia eléctrica en bornes del generador [W], "
+                "P_mec_gen = potencia mecánica de entrada [W]."
+            )
+        ),
+
+        "V_LL (V)": st.column_config.NumberColumn(
+            "V_LL (V)",
+            help=(
+                "Descripción: Tensión línea-línea del generador según curva nominal.\n"
+                "Fórmula: V_LL = interp_V(rpm_gen).\n"
+                "Parámetros: rpm_gen = velocidad del generador [rpm], curva V_LL(rpm) de datasheet/CSV."
+            )
+        ),
+
+        "V_LL (Ke) [V]": st.column_config.NumberColumn(
+            "V_LL (Ke) [V]",
+            help=(
+                "Descripción: Tensión línea-línea estimada usando la constante eléctrica Ke.\n"
+                "Fórmula: V_LL_Ke = Ke · ω_gen.\n"
+                "Parámetros: Ke = constante [V·s/rad], ω_gen = velocidad angular del generador [rad/s]."
+            )
+        ),
+
+        "f_e (Hz)": st.column_config.NumberColumn(
+            "f_e (Hz)",
+            help=(
+                "Descripción: Frecuencia eléctrica trifásica del generador.\n"
+                "Fórmula: f_e = (p/2) · (rpm_gen / 60).\n"
+                "Parámetros: p = número total de polos, rpm_gen = velocidad del generador [rpm]."
+            )
+        ),
+
+        "f_1P (Hz)": st.column_config.NumberColumn(
+            "f_1P (Hz)",
+            help=(
+                "Descripción: Frecuencia de paso 1P del rotor (una vuelta completa).\n"
+                "Fórmula: f_1P = rpm_rotor / 60.\n"
+                "Parámetros: rpm_rotor = velocidad del rotor [rpm]."
+            )
+        ),
+
+        "f_3P (Hz)": st.column_config.NumberColumn(
+            "f_3P (Hz)",
+            help=(
+                "Descripción: Frecuencia de paso 3P (paso de palas en rotor de 3 palas).\n"
+                "Fórmula: f_3P = 3 · f_1P.\n"
+                "Parámetros: f_1P = frecuencia de paso fundamental [Hz], N_pal = 3."
+            )
+        ),
+
+        "T_rotor (N·m)": st.column_config.NumberColumn(
+            "T_rotor (N·m)",
+            help=(
+                "Descripción: Par aerodinámico en el eje del rotor.\n"
+                "Fórmula: T_rotor = P_aero / ω_rot.\n"
+                "Parámetros: P_aero = potencia aerodinámica [W], ω_rot = velocidad angular del rotor [rad/s]."
+            )
+        ),
+
+        "T_gen (N·m)": st.column_config.NumberColumn(
+            "T_gen (N·m)",
+            help=(
+                "Descripción: Par transmitido al eje del generador.\n"
+                "Fórmula: T_gen = T_rotor / G.\n"
+                "Parámetros: T_rotor = par en el rotor [N·m], G = relación de transmisión."
+            )
+        ),
+
+        "P_el (kW)": st.column_config.NumberColumn(
+            "P_el (kW)",
+            help=(
+                "Descripción: Potencia eléctrica AC antes del clipping (tras electrónica de potencia).\n"
+                "Fórmula: P_el = P_el_gen · η_elec.\n"
+                "Parámetros: P_el_gen = potencia eléctrica del generador [W], η_elec = eficiencia electrónica (rect+inv)."
+            )
+        ),
+
+        "P_out (clip) kW": st.column_config.NumberColumn(
+            "P_out (clip) kW",
+            help=(
+                "Descripción: Potencia eléctrica útil limitada por la potencia nominal (clipping).\n"
+                "Fórmula: P_out = min(P_el, P_nom).\n"
+                "Parámetros: P_el = potencia eléctrica antes de clipping [W], P_nom = potencia nominal del sistema [W]."
+            )
+        ),
+
+        "I_est (A)": st.column_config.NumberColumn(
+            "I_est (A)",
+            help=(
+                "Descripción: Corriente trifásica estimada en bornes del generador/inversor.\n"
+                "Fórmula: I_est = P_out / (√3 · V_LL · PF).\n"
+                "Parámetros: P_out = potencia de salida [W], V_LL = tensión línea-línea [V], PF = factor de potencia (≈0.95)."
+            )
+        ),
+
+        "Lw (dB)": st.column_config.NumberColumn(
+            "Lw (dB)",
+            help=(
+                "Descripción: Nivel de potencia sonora de la turbina.\n"
+                "Fórmula: L_w = L_w_ref + 10 · n · log10(U_tip / U_tip_ref).\n"
+                "Parámetros: L_w_ref = nivel de referencia [dB], n = exponente, U_tip = velocidad de punta, "
+                "U_tip_ref = velocidad de referencia."
+            )
+        ),
+
+        "Lp_obs (dB)": st.column_config.NumberColumn(
+            "Lp_obs (dB)",
+            help=(
+                "Descripción: Nivel de presión sonora estimado en el punto del observador.\n"
+                "Fórmula: L_p = L_w − 20 · log10(r_obs) − 11.\n"
+                "Parámetros: L_w = nivel de potencia sonora [dB], r_obs = distancia al observador [m]."
+            )
+        ),
+
+        "P_loss_mec (kW)": st.column_config.NumberColumn(
+            "P_loss_mec (kW)",
+            help=(
+                "Descripción: Pérdidas mecánicas entre el rotor y el eje del generador.\n"
+                "Fórmula: P_loss_mec = P_aero − P_mec_gen.\n"
+                "Parámetros: P_aero = potencia aerodinámica [W], P_mec_gen = potencia mecánica en el eje [W]."
+            )
+        ),
+
+        "P_loss_gen (kW)": st.column_config.NumberColumn(
+            "P_loss_gen (kW)",
+            help=(
+                "Descripción: Pérdidas internas del generador eléctrico.\n"
+                "Fórmula: P_loss_gen = P_mec_gen − P_el_gen.\n"
+                "Parámetros: P_mec_gen = potencia mecánica [W], P_el_gen = potencia eléctrica generador [W]."
+            )
+        ),
+
+        "P_loss_elec (kW)": st.column_config.NumberColumn(
+            "P_loss_elec (kW)",
+            help=(
+                "Descripción: Pérdidas en electrónica de potencia (rectificador + inversor, etc.).\n"
+                "Fórmula: P_loss_elec = P_el_gen − P_el.\n"
+                "Parámetros: P_el_gen = potencia eléctrica del generador [W], P_el = potencia después de electrónica [W]."
+            )
+        ),
+
+        "P_loss_clip (kW)": st.column_config.NumberColumn(
+            "P_loss_clip (kW)",
+            help=(
+                "Descripción: Potencia recortada por clipping al alcanzar el límite nominal.\n"
+                "Fórmula: P_loss_clip = P_el − P_out.\n"
+                "Parámetros: P_el = potencia eléctrica antes de clipping [W], P_out = potencia útil tras clipping [W]."
+            )
+        ),
+    },
 )
+
+
+
+# --- Botón para descargar CSV de la tabla ---
+
 
 st.download_button(
     f"📥 Descargar CSV – vista: {mod_sel}",
     data=df_view.to_csv(index=False).encode("utf-8"),
     file_name=f"vawt_resultados_{mod_sel.replace(' ', '_')}.csv",
-    mime="text/csv"
+    mime="text/csv",
+    key="csv_tabla_resultados"
+)
+# --- Ficha técnica de columnas principales ---
+with st.expander("📘 Guía rápida – columnas clave de la tabla"):
+    st.markdown(
+        """
+<span class="formula-bullet"><b>λ_efectiva</b><br>
+<span class="formula-inline">
+Descripción: TSR efectiva del rotor (relación entre velocidad de punta y viento).<br>
+Fórmula: λ = ω<sub>rot</sub> · R / v<br>
+Parámetros: ω<sub>rot</sub> = 2π·rpm_rotor/60 [rad/s], R = radio del rotor [m], v = velocidad del viento [m/s].
+</span>
+</span>
+
+<br>
+
+<span class="formula-bullet"><b>Cp_el_equiv</b><br>
+<span class="formula-inline">
+Descripción: Cp equivalente eléctrico tras todas las pérdidas hasta la entrega AC (potencia útil).<br>
+Fórmula: Cp<sub>el</sub> = P_out / (0.5 · ρ · A · v³)<br>
+Parámetros: P_out = potencia eléctrica útil con clipping [W], ρ = densidad del aire [kg/m³], A = D·H [m²], v = viento [m/s].
+</span>
+</span>
+
+<br>
+
+<span class="formula-bullet"><b>P_out (clip) kW</b><br>
+<span class="formula-inline">
+Descripción: Potencia eléctrica de salida limitada por la potencia nominal del sistema.<br>
+Fórmula: P_out = min(P_el, P_nom)<br>
+Parámetros: P_el = potencia eléctrica antes de clipping [W], P_nom = potencia nominal [W].
+</span>
+</span>
+
+<br>
+
+<span class="formula-bullet"><b>Re (mid-span)</b><br>
+<span class="formula-inline">
+Descripción: Número de Reynolds en la sección media de la pala, asociado al régimen aerodinámico del perfil.<br>
+Fórmula: Re = ρ · U_tip · c / μ<br>
+Parámetros: ρ = densidad del aire [kg/m³], U_tip = velocidad de punta [m/s], c = cuerda [m], μ = viscosidad dinámica [Pa·s].
+</span>
+</span>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ====== DISEÑO PARA FÓRMULAS DE CADA COLUMNA ======
+st.markdown(
+    """
+<style>
+.formula-bullet {
+    font-size: 0.9rem;
+    margin: 0.15rem 0;
+}
+.formula-bullet b {
+    font-weight: 600;
+}
+.formula-inline {
+    font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+    font-size: 0.9rem;
+}
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
 
@@ -3951,13 +4300,22 @@ figs_report = {
 }
 
 
+# -------------------------------------------------------
+# Construcción diccionario de figuras
+# -------------------------------------------------------
 if use_noise:
     figs_report["Ruido estimado vs velocidad de viento"] = figNoise
 
-pdf_bytes = build_pdf_report(df_view, figs_report, kpi_summary)
-st.download_button(
-    "📥 Descargar reporte técnico (PDF)",
-    data=pdf_bytes,
-    file_name="reporte_tecnico_VAWT.pdf",
-    mime="application/pdf"
-)
+# -------------------------------------------------------
+# Botón para generar PDF
+# -------------------------------------------------------
+if st.button("Generar reporte PDF"):
+    pdf_bytes = build_pdf_report(df_view, figs_report, kpi_summary)
+
+    st.download_button(
+        label="📥 Descargar reporte técnico (PDF)",
+        data=pdf_bytes,
+        file_name="reporte_tecnico_VAWT.pdf",
+        mime="application/pdf",
+        key="descargar_pdf_tecnico_vawt"   # 🔑 clave única
+    )

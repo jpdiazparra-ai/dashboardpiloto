@@ -278,6 +278,34 @@ def solidity_int(N, c, R):
     """
     return (N * c) / R
 
+def rpm_rotor_mppt(v_array, D, lam_opt, v_cut_in, v_rated, v_cut_out, rpm_rotor_rated):
+    """
+    Ley de control MPPT por regiones:
+    - v < v_cut_in            -> rotor parado (rpm = 0)
+    - v_cut_in ≤ v ≤ v_rated  -> MPPT: λ ≈ λ_opt  → rpm ∝ v
+    - v_rated < v ≤ v_cut_out -> potencia limitada: rpm ≈ rpm_rotor_rated
+    - v > v_cut_out           -> rotor parado (rpm = 0)
+    """
+    R = D / 2.0
+    v_array = np.asarray(v_array, dtype=float)
+
+    # rpm que mantiene λ = λ_opt (MPPT puro)
+    rpm_mppt = (30.0 / (pi * R)) * lam_opt * v_array
+
+    # iniciamos todo en 0 (parado)
+    rpm = np.zeros_like(v_array)
+
+    # Región MPPT (λ ≈ λ_opt)
+    mask_reg2 = (v_array >= v_cut_in) & (v_array <= v_rated)
+    rpm[mask_reg2] = rpm_mppt[mask_reg2]
+
+    # Región potencia limitada (rpm constante)
+    mask_reg3 = (v_array > v_rated) & (v_array <= v_cut_out)
+    rpm[mask_reg3] = rpm_rotor_rated
+
+    # v < cut-in o v > cut-out → rpm = 0
+    return rpm
+
 
 # =========================================================
 # Modelo Cp(λ) con efectos de perfil de pala
@@ -592,10 +620,18 @@ with st.sidebar:
         H = st.number_input("Altura H [m]",    min_value=2.0, value=14.0, step=0.5)
         N = st.number_input("Nº de palas N",   min_value=2,   value=3, step=1)
         c = st.number_input("Cuerda c [m]",    min_value=0.1, value=0.80, step=0.05)
-
-    # Operación / Control
+    
     with st.expander("Operación / Control", expanded=False):
-        tsr = st.number_input("TSR objetivo (λ)", min_value=1.6, value=2.16, step=0.1)
+
+        # TSR óptimo para control MPPT
+        lam_opt_ctrl = st.number_input(
+            "TSR objetivo λ (control)",
+            min_value=1.6,
+            value=2.47,   # aquí defines tu λ_opt de operación
+            step=0.05
+        )
+        tsr = lam_opt_ctrl  # este TSR se usa en las ecuaciones aero
+
         rho = st.number_input("Densidad aire ρ [kg/m³]", min_value=1.0, value=1.225, step=0.025)
         mu  = st.number_input(
             "Viscosidad dinámica μ [Pa·s]",
@@ -605,6 +641,7 @@ with st.sidebar:
         v_cut_in  = st.number_input("v_cut-in [m/s]",  min_value=0.5, value=3.0, step=0.5)
         v_rated   = st.number_input("v_rated [m/s]",   min_value=v_cut_in + 0.5, value=12.0, step=0.5)
         v_cut_out = st.number_input("v_cut-out [m/s]", min_value=v_rated + 0.5, value=20.0, step=0.5)
+
 
     # Tweaks aerodinámicos
     with st.expander("Tweaks aerodinámicos", expanded=False):
@@ -750,7 +787,7 @@ with st.sidebar:
     with st.expander("Weibull (opcional)", expanded=False):
         use_weibull = st.checkbox("Calcular AEP/FP con Weibull", False)
         k_w = st.number_input("k (forma)",  min_value=1.0, value=2.0, step=0.1)
-        c_w = st.number_input("c (escala) [m/s]", min_value=2.0, value=2.0, step=0.5)
+        c_w = st.number_input("c (escala) [m/s]", min_value=2.0, value=7.5, step=0.5)
 
     # =========================================================
     # NUEVO: Datos piloto (SCADA) para calibración
@@ -838,32 +875,47 @@ cp_params = build_cp_params(
     symmetric=is_symmetric,
     pitch_deg=pitch_deg,
 )
+# λ óptimo aerodinámico que entrega el modelo Cp(λ)
+lambda_opt_teo = cp_params["lam_opt"]
+
+# λ que usará el control MPPT para la ley rpm–v en región 2
+# (lo igualamos al óptimo teórico para que λ_opt_ctrl = λ_opt_teo)
+lambda_mppt = lambda_opt_teo
+
 
 # Grid de vientos
 v_grid = np.arange(v_min, v_max + 1e-9, 0.5 if v_max - v_min > 1 else 0.1)
-# advertencia si v_max < v_rated
-if v_max < v_rated:
-    st.warning("⚠️ v_max es menor que v_rated; la región nominal no se ve completa en los gráficos.")
 
-# Ley de operación por regiones (TSR constante solo en región 2)
-rpm_tsr = rpm_from_tsr(v_grid, D, tsr)
+# Ley de operación por regiones:
+# En región MPPT usamos λ_mppt (igualado a λ_opt_teo para que el control sea óptimo).
+rpm_tsr = rpm_from_tsr(v_grid, D, lambda_mppt)
 rpm_rotor = np.zeros_like(v_grid)
 
 mask_reg2 = (v_grid >= v_cut_in) & (v_grid <= v_rated)
 rpm_rotor[mask_reg2] = rpm_tsr[mask_reg2]
 
-rpm_rated_val = rpm_from_tsr(v_rated, D, tsr)
-mask_reg3 = (v_grid > v_rated) & (v_grid <= v_cut_out)
-rpm_rotor[mask_reg3] = rpm_rated_val
+# rpm nominal coherente con el λ_mppt utilizado
+rpm_rated_val = rpm_from_tsr(v_rated, D, lambda_mppt)
 
-# v < cut-in o v > cut-out → rpm_rotor = 0
 
-# Chequeo de consistencia entre rpm_rated (control) y rpm por TSR
-if abs(rpm_rotor_rated - rpm_rated_val) > 5:
+rpm_rotor = rpm_rotor_mppt(
+    v_array=v_grid,
+    D=D,
+    lam_opt=lam_opt_ctrl,
+    v_cut_in=v_cut_in,
+    v_rated=v_rated,
+    v_cut_out=v_cut_out,
+    rpm_rotor_rated=rpm_rotor_rated,
+)
+
+# Chequeo de consistencia entre rpm_rotor_rated y la ley MPPT en v_rated
+rpm_rated_ctrl = float(np.interp(v_rated, v_grid, rpm_rotor))
+if abs(rpm_rotor_rated - rpm_rated_ctrl) > 5:
     st.warning(
-        f"⚠️ rpm_rotor_rated ({rpm_rotor_rated:.1f} rpm) difiere de la rpm por TSR @ v_rated ({rpm_rated_val:.1f} rpm). "
-        "Revisa consistencia entre el diseño aerodinámico y el control/MPPT."
+        f"⚠️ rpm_rotor_rated ({rpm_rotor_rated:.1f} rpm) difiere de la rpm MPPT @ v_rated "
+        f"({rpm_rated_ctrl:.1f} rpm). Revisa consistencia entre diseño aerodinámico, λ_opt y control MPPT."
     )
+
 
 rpm_gen   = rpm_rotor * G
 omega_rot = 2 * pi * rpm_rotor / 60.0
@@ -1237,7 +1289,7 @@ modulos_columnas = {
 if "modulo_tabla" not in st.session_state:
     st.session_state["modulo_tabla"] = "Todas"
 
-# ---------- ESTILO SELECTOR + TABLA ----------
+
 # ---------- ESTILO SELECTOR + TABLA ----------
 st.markdown("""
 <style>
@@ -1408,27 +1460,42 @@ st.dataframe(
         "rpm_rotor": st.column_config.NumberColumn(
             "rpm_rotor",
             help=(
-                "Descripción: Velocidad de giro del rotor.\n"
-                "Fórmula: rpm_rotor = (30 / (π · R)) · λ · v.\n"
-                "Parámetros: R = radio del rotor [m], λ = TSR objetivo/efectiva, v = velocidad del viento [m/s]."
+                "Descripción: Velocidad de giro del rotor según la ley de control MPPT.\n"
+                "Fórmulas:\n"
+                "• Región 2 (MPPT): rpm_rotor = (30 / (π · R)) · λ_ctrl · v.\n"
+                "• Región 3 (nominal): rpm_rotor = rpm_rotor_rated (constante).\n"
+                "Parámetros:\n"
+                "• λ_ctrl = TSR objetivo definido en el panel de control.\n"
+                "• R = radio del rotor [m].\n"
+                "• v = velocidad del viento [m/s].\n"
+                "• rpm_rotor_rated = velocidad nominal fija del rotor."
             )
         ),
 
         "rpm_gen": st.column_config.NumberColumn(
             "rpm_gen",
             help=(
-                "Descripción: Velocidad de giro del generador.\n"
+                "Descripción: Velocidad de giro del generador resultante del control MPPT.\n"
                 "Fórmula: rpm_gen = rpm_rotor · G.\n"
-                "Parámetros: rpm_rotor = velocidad del rotor [rpm], G = relación de transmisión rpm_gen/rpm_rotor."
+                "Parámetros:\n"
+                "• rpm_rotor = velocidad del rotor (MPPT en Región 2, fija en Región 3).\n"
+                "• G = relación de transmisión rpm_gen/rpm_rotor."
             )
         ),
 
         "λ_efectiva": st.column_config.NumberColumn(
             "λ_efectiva",
             help=(
-                "Descripción: TSR efectiva del rotor (relación entre velocidad de punta y viento).\n"
-                "Fórmula: λ_efectiva = ω_rot · R / v.\n"
-                "Parámetros: ω_rot = 2π·rpm_rotor/60 [rad/s], R = radio del rotor [m], v = velocidad del viento [m/s]."
+                "Descripción: TSR efectiva del rotor.\n"
+                "Fórmula general: λ_efectiva = ω_rot · R / v.\n"
+                "Notas:\n"
+                "• En Región 2: λ_efectiva ≈ λ_ctrl (MPPT mantiene TSR constante).\n"
+                "• En Región 3: λ_efectiva baja al mantenerse rpm_rotor constante.\n"
+                "Parámetros:\n"
+                "• ω_rot = 2π · rpm_rotor / 60.\n"
+                "• R = radio del rotor [m].\n"
+                "• v = velocidad del viento [m/s].\n"
+                "• λ_ctrl = TSR objetivo del panel (control MPPT)."
             )
         ),
 

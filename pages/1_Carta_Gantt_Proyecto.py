@@ -496,6 +496,14 @@ def gantt_pro(df, date_mode="Plan", color_by="Estado"):
     hover_cols = ["ID","Fase","Línea","Responsable","Ubicación","%","Depende de","Hito (S/N)","Riesgo clave","Piloto"]
     hover_cols = [c for c in hover_cols if c in dfp.columns]
 
+    # --- Texto a mostrar en barra: Fecha real ---
+    if DATE_COL_END_REAL in dfp.columns:
+        dfp["_label_barra"] = dfp[DATE_COL_END_REAL].dt.strftime("%d-%m-%Y")
+    else:
+        dfp["_label_barra"] = ""
+
+
+
        # --- Gráfico base ---
     fig = px.timeline(
         dfp,
@@ -505,18 +513,18 @@ def gantt_pro(df, date_mode="Plan", color_by="Estado"):
         color_discrete_map=color_map,
         category_orders={"Tarea / Entregable": y_labels},
         hover_data=hover_cols,
-        text="%" if "%" in dfp.columns else None,  # ← aquí vinculamos la columna %
+        text="_label_barra",  # ← aquí vinculamos la columna %
         opacity=0.95,
     )
 
     # Mostrar % dentro de las barras con formato bonito
-    if "%" in dfp.columns:
-        fig.update_traces(
-            texttemplate="%{text:.0f}%",
-            textposition="inside",
-            insidetextanchor="middle",
-            selector=dict(type="bar"),
-        )
+    fig.update_traces(
+    texttemplate="%{text}",
+    textposition="inside",
+    insidetextanchor="middle",
+    selector=dict(type="bar"),
+)
+
 
 
 

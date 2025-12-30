@@ -117,7 +117,7 @@ TEMPLATE_WIND_SERIES = """timestamp,v_mean_m_s,v_max_m_s,v_std_m_s,direction_deg
 """
 
 # URL por defecto para la serie de viento (Google Sheets publicado como CSV)
-WIND_SERIES_URL_DEFAULT = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSI-Mg4NQsfXChe2BZeqQ2ysAnJ_AXp1R2nbLAGAKG3B54nBo5fNiC9c6uFfrxwdmlR5LFvDVEqZO08/pub?gid=351976858&single=true&output=csv"
+WIND_SERIES_URL_DEFAULT = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHtEsn6lh4hmvgwxgTa2paCwspExG_67PPb60zsR_xLgkJ9cWY_kfnZlq3viSCI3gsqXtDImwcqhcM/pub?gid=617897594&single=true&output=csv"
 
 # URL por defecto para la curva de potencia (Google Sheets publicado como CSV)
 PC_CSV_URL_DEFAULT = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSoy1swXqDpUDbSglCims4oyCyZA8kNpEwoJ4i_DWl3kT2cIUljRCzYGJdPwrqw6n5hdp7V3K1-bF_I/pub?gid=0&single=true&output=csv"
@@ -425,7 +425,7 @@ st.sidebar.title("Parámetros de entrada")
 modo = st.sidebar.radio("Modo de evaluación", ["Series (CSV)", "Distribución (Weibull)"], index=0)
 
 # Curva de potencia (si quieres también plegarla)
-with st.sidebar.expander("Curva de Potencia (CSV)", expanded=True):
+with st.sidebar.expander("Curva de Potencia (CSV)", expanded=False):
     pc_url = st.text_input(
         "URL curva de potencia (Google Sheets CSV)",
         value=PC_CSV_URL_DEFAULT,
@@ -465,7 +465,7 @@ with st.sidebar.expander("Pérdidas (%)", expanded=False):
 with st.sidebar.expander("Propuesta técnica (objetivos)", expanded=False):
     consumo_diario_kWh_pt = st.number_input(
         "Consumo diario objetivo (kWh/día)",
-        min_value=0.0, value=36000.0, step=100.0
+        min_value=0.0, value=190.0, step=100.0
     )
     consumo_anual_MWh_pt = st.number_input(
         "Consumo anual estimado (MWh/año) (opcional)",
@@ -492,7 +492,7 @@ with st.sidebar.expander("Propuesta técnica (objetivos)", expanded=False):
 
 # Entradas específicas por modo
 if modo == "Series (CSV)":
-    with st.sidebar.expander("Series de viento (CSV)", expanded=True):
+    with st.sidebar.expander("Series de viento (CSV)", expanded=False):
        wind_url = st.text_input(
            "URL CSV (Google Sheets publicado)",
            value=WIND_SERIES_URL_DEFAULT,
@@ -645,7 +645,7 @@ else:
     st.info("🔧 No hay curva de potencia. Uso una curva de ejemplo incluida (kW).")
     pc_df = read_power_curve(io.StringIO(TEMPLATE_POWER_CURVE))
 
-with st.expander("Curva de potencia cargada", expanded=True):
+with st.expander("Curva de potencia cargada", expanded=False):
     st.write(f"Puntos: **{len(pc_df)}** · P_rated: **{pc_df['P_KW'].max():,.2f} kW**")
     st.caption("Nota: si subiste `P_W`, se convirtió a `P_KW = P_W ÷ 1000`.")
     st.dataframe(pc_df[["v_m_s", "P_KW"]], use_container_width=True)
@@ -1486,7 +1486,7 @@ if ("n_turbinas" not in locals() or "potencia_turbina_kW" not in locals() or
     st.info("🔎 Primero ejecuta la **Propuesta técnica** para obtener número de turbinas y potencia por turbina.")
 else:
     # Defaults + lectura desde la hoja
-    defaults = dict(turb_usd_kw=1482.0, bess_usd_kwh=303.0, storage_pct=20.0, storage_hours=4.0)
+    defaults = dict(turb_usd_kw=3750.0, bess_usd_kwh=303.0, storage_pct=20.0, storage_hours=4.0)
     sheet_params = _read_params_from_sheet(params_url) if params_url else {}
     pars = {**defaults, **sheet_params}
 
@@ -1667,7 +1667,7 @@ else:
 # =========================
 # CAPEXV2 (Item/Participación/Monto/Categoría) — DESDE URL
 # =========================
-CAPEX_CSV_URL_DEFAULT = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRb9avOuK8IILVQcc5WKSK9C01pRODcOtO60RNqwo-RstqV3kpEwEzyCM0X5TeEBf9Jje76370ly74d/pub?gid=1849740876&single=true&output=csv"
+CAPEX_CSV_URL_DEFAULT = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSlNd3zXc1zV6TUQHnhXlfZtv7QVOv0mBfR_HH69Ht-0qi2aDtCfw5ouLDGIoPH_knhSAtyT2DYE-Qo/pub?gid=0&single=true&output=csv"
 capex_url = st.text_input("URL CAPEX (Item / Categoría / Participación / Monto) – CSV", value=CAPEX_CSV_URL_DEFAULT)
 
 def _read_capex_table(url: str) -> pd.DataFrame | None:
@@ -1741,87 +1741,50 @@ def _read_capex_table(url: str) -> pd.DataFrame | None:
     return out if len(out) else None
 
 
-# ====== Visualización CAPEXV2 PRO ======
-st.subheader("Desgloce del Capex")
+# ====== VISUAL PRO · DESGLOSE DEL CAPEX (CAPEXV2) ======
+st.subheader("Desglose del CAPEX del Proyecto")
+
 capex_df = _read_capex_table(capex_url)
 
 if capex_df is None:
     st.warning("No se pudo leer la tabla CAPEXV2 desde la URL. Verifica permisos y formato.")
 else:
-    # Completa % desde Monto si la hoja ya trae montos
-    if "Monto_USD" in capex_df.columns and capex_df["Monto_USD"].notna().any():
-        total_hoja = capex_df["Monto_USD"].sum(skipna=True)
-        if total_hoja:
-            mask = capex_df["Participacion_%"].isna() & capex_df["Monto_USD"].notna()
-            capex_df.loc[mask, "Participacion_%"] = (capex_df.loc[mask, "Monto_USD"] / total_hoja) * 100.0
-
-    # Calcula Monto_USD desde % usando CAPEX total de la 4ª etapa
-    capex_base = st.session_state.get("capex_total_directo", None)
-
-    # Si los % vinieran en 0–1, pasa a 0–100
+    # --- Normalización base ---
     if capex_df["Participacion_%"].max(skipna=True) <= 1.0:
         capex_df["Participacion_%"] = capex_df["Participacion_%"] * 100.0
 
-    if capex_base is not None and np.isfinite(capex_base):
-        capex_df["Monto_USD"] = (capex_df["Participacion_%"].fillna(0.0) / 100.0) * float(capex_base)
+    # CAPEX total de referencia (desde Propuesta Financiera)
+    capex_base = st.session_state.get("capex_total_directo", None)
+
+    # Si hay Monto_USD en la hoja, úsalo; si hay capex_base, recalculamos
+    if "Monto_USD" in capex_df.columns and capex_df["Monto_USD"].notna().any():
+        capex_df["Monto_USD"] = pd.to_numeric(capex_df["Monto_USD"], errors="coerce")
+        total_hoja = capex_df["Monto_USD"].sum(skipna=True)
+
+        if total_hoja > 0:
+            mask = capex_df["Participacion_%"].isna() & capex_df["Monto_USD"].notna()
+            capex_df.loc[mask, "Participacion_%"] = (
+                capex_df.loc[mask, "Monto_USD"] / total_hoja * 100.0
+            )
+
+    if capex_base is not None and np.isfinite(capex_base) and capex_base > 0:
+        capex_df["Monto_USD"] = (
+            capex_df["Participacion_%"].fillna(0.0) / 100.0
+        ) * float(capex_base)
     else:
         if "Monto_USD" not in capex_df.columns:
             capex_df["Monto_USD"] = np.nan
 
-    # Aviso si % totales difieren de 100
+    # Suma total de %
     pct_total = capex_df["Participacion_%"].sum(skipna=True)
-    if np.isfinite(pct_total) and not (99.5 <= pct_total <= 100.5):
-        st.info(f"⚠️ La suma de Participación_% en la tabla base es {pct_total:,.2f} %. Revisa o ajusta la hoja si corresponde.")
 
-    # ========= Filtros (por Ítem) =========
-    with st.expander("🎛️ Filtros de visualización (por Ítem)", expanded=True):
-        st.markdown("<style>.hint{font-size:12px; color:#6B7280; margin-top:.25rem}</style>", unsafe_allow_html=True)
-
-        items_all = sorted(capex_df["Item"].dropna().astype(str).unique().tolist())
-        q_items = st.text_input("🔎 Buscar ítems (separa varias palabras con espacio)", value="")
-        if q_items.strip():
-            words = [w.strip().lower() for w in q_items.split() if w.strip()]
-            def _matches_all(name: str) -> bool:
-                n = str(name).lower()
-                return all(w in n for w in words)
-            items_options = [it for it in items_all if _matches_all(it)]
-        else:
-            items_options = items_all
-
-        key_ms = "items_ms_key"
-        if key_ms not in st.session_state:
-            st.session_state[key_ms] = items_options[:]    # valor inicial
-
-        # Botones rápidos
-        c1, c2, _ = st.columns([1,1,3])
-        with c1:
-            if st.button("Seleccionar todo", key="btn_sel_all"):
-                st.session_state[key_ms] = items_options[:]
-        with c2:
-            if st.button("Limpiar", key="btn_clear_all"):
-                st.session_state[key_ms] = []
-
-        # Importante: no pasamos 'default' para evitar el warning; al tener 'key',
-        # Streamlit toma el valor desde session_state.
-        items_sel = st.multiselect(
-            "Filtrar por ítem",
-            options=items_options,
-            key=key_ms,
-            help="Usa la búsqueda para acotar opciones; luego selecciona uno o varios ítems."
-        )
-        st.markdown(
-            f"<div class='hint'>Ítems disponibles: <b>{len(items_options)}</b> · Ítems seleccionados: <b>{len(items_sel)}</b></div>",
-            unsafe_allow_html=True
-        )
-
-    # ========= Vista filtrada (por Ítem) =========
+    # ====== Vista sin filtros (todos los ítems) ======
     df_view = capex_df.copy()
-    if items_sel:
-        df_view = df_view[df_view["Item"].isin(items_sel)]
-    elif q_items.strip():
-        df_view = df_view[df_view["Item"].isin(items_options)]
 
-    # === Totales y subtotales robustos
+    # Asegurar columna de categoría
+    if "Categoria" not in df_view.columns:
+        df_view["Categoria"] = "Sin categoría"
+
     has_monto = df_view["Monto_USD"].notna().any()
     tot_monto = df_view["Monto_USD"].sum(skipna=True) if has_monto else np.nan
 
@@ -1831,439 +1794,177 @@ else:
 
     grp = df_view.groupby("Categoria", dropna=False).agg(agg_dict).reset_index()
 
-    # === Editor interactivo (con formateo de % y $ en la vista) ===
-    df_view_disp = df_view.copy()
-    df_view_disp["Participacion_%"] = df_view_disp["Participacion_%"].round(2)
+    # ====== PALETA CONSISTENTE POR CATEGORÍA ======
+    import plotly.express as px
+    base_palette = px.colors.qualitative.Set2
 
-    if has_monto:
-        df_view_disp["Monto_USD_fmt"] = df_view_disp["Monto_USD"].apply(
-            lambda x: f"${x:,.0f}" if pd.notna(x) else ""
-        )
-    else:
-        df_view_disp["Monto_USD_fmt"] = ""
+    categorias = sorted(grp["Categoria"].astype(str).unique().tolist())
+    COLOR_CATEG = {
+        cat: base_palette[i % len(base_palette)]
+        for i, cat in enumerate(categorias)
+    }
 
-    st.data_editor(
-        df_view_disp[["Item", "Participacion_%", "Categoria", "Monto_USD_fmt"]],
-        use_container_width=True,
-        hide_index=True,
-        num_rows="dynamic",
-        column_config={
-            "Item": st.column_config.TextColumn("Item", width="medium"),
-            "Categoria": st.column_config.SelectboxColumn(
-                "Categoría", options=sorted(capex_df["Categoria"].dropna().unique())
-            ),
-            "Participacion_%": st.column_config.NumberColumn(
-                "Participación (%)",
-                help="Participación del ítem en el CAPEX",
-                format="%.2f %%"
-            ),
-            "Monto_USD_fmt": st.column_config.TextColumn(
-                "Monto (USD)",
-                help="Monto calculado = (%/100) × CAPEX total",
-                disabled=True
-            ),
-        }
+    # ====== Helper abreviación USD ======
+    def _abbr_usd(x: float) -> str:
+        if x is None or not np.isfinite(x):
+            return ""
+        if abs(x) >= 1e9:  return f"${x/1e9:,.2f}B"
+        if abs(x) >= 1e6:  return f"${x/1e6:,.2f}M"
+        if abs(x) >= 1e3:  return f"${x/1e3:,.0f}k"
+        return f"${x:,.0f}"
+
+    # ====== Tabs de análisis ======
+    tab_resumen, tab_tabla, tab_graficos = st.tabs(
+        ["📊 Resumen ejecutivo", "📄 Tabla filtrada", "📈 Gráficos detallados"]
     )
 
-    # === KPIs
-    k1, k2, k3 = st.columns(3)
-    with k1: st.metric("Ítem", f"{len(df_view):,}")
-    with k2: st.metric("Total USD ", f"${tot_monto:,.0f}" if has_monto and np.isfinite(tot_monto) else "—")
-    with k3: st.metric("Suma de % ", f"{df_view['Participacion_%'].sum(skipna=True):,.1f} %")
+    # =========================================================
+    # ================= TAB 1 – RESUMEN ========================
+    # =========================================================
+    with tab_resumen:
+        # DONUT · TOP 10 ÍTEMS (coloreado por categoría)
+        st.markdown("**Participación por ítem (Top 10)**")
+
+        metric_pie = "Monto_USD" if has_monto else "Participacion_%"
+        df_pie = df_view[df_view[metric_pie].notna()].copy()
+        df_pie_top = (
+            df_pie.sort_values(metric_pie, ascending=False)
+                 .head(10)  # Top 10 ítems
+                 .copy()
+        )
+
+        fig_items_donut = px.pie(
+            df_pie_top,
+            names="Item",
+            values=metric_pie,
+            hole=0.55,
+            color="Categoria",
+            color_discrete_map=COLOR_CATEG,
+        )
+
+        fig_items_donut.update_traces(
+            textposition="inside",
+            texttemplate="%{percent:.1%}",
+            marker=dict(line=dict(color="white", width=2)),
+            hovertemplate="<b>%{label}</b><br>"
+                          + ("$%{value:,.0f}" if metric_pie == "Monto_USD" else "%{value:.2f}%")
+                          + "<extra></extra>"
+        )
+
+        fig_items_donut = apply_plotly_theme(fig_items_donut, "", "", "", height=340)
+        fig_items_donut.update_layout(
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                y=-0.2,
+                x=0.5,
+                xanchor="center"
+            ),
+            margin=dict(l=10, r=10, t=10, b=80)
+        )
+
+        if has_monto and np.isfinite(tot_monto):
+            fig_items_donut.add_annotation(
+                text=f"Total<br>{_abbr_usd(tot_monto)}",
+                showarrow=False,
+                x=0.5, y=0.5, xref="paper", yref="paper",
+                font=dict(size=14, color=GRAY_1)
+            )
+
+        st.plotly_chart(fig_items_donut, use_container_width=True)
+
+        # BARRAS · TOP 10 CATEGORÍAS
+        st.markdown("**CAPEX por categoría (Top 10)**")
+
+        metric_cat = "Monto_USD" if has_monto else "Participacion_%"
+        grp_top = (
+            grp.sort_values(metric_cat, ascending=False)
+               .head(10)  # Top 10 categorías
+               .sort_values(metric_cat, ascending=True)
+               .copy()
+        )
+
+        etiqueta_txt = "$%{x:,.0f}" if metric_cat == "Monto_USD" else "%{x:.2f} %"
+        ylab = "USD" if metric_cat == "Monto_USD" else "%"
+
+        fig_cat_bar = px.bar(
+            grp_top,
+            x=metric_cat,
+            y="Categoria",
+            orientation="h",
+            text=metric_cat,
+            color="Categoria",
+            color_discrete_map=COLOR_CATEG,
+        )
+        fig_cat_bar.update_traces(
+            texttemplate=etiqueta_txt,
+            textposition="outside",
+            cliponaxis=False,
+            opacity=0.96,
+            hovertemplate="<b>%{y}</b><br>"
+                          + ("$%{x:,.0f}" if metric_cat == "Monto_USD" else "%{x:.2f}%")
+                          + "<extra></extra>",
+        )
+
+        fig_cat_bar = apply_plotly_theme(
+            fig_cat_bar,
+            "Top categorías por aporte al CAPEX",
+            "",
+            ylab,
+            height=420
+        )
+        st.plotly_chart(fig_cat_bar, use_container_width=True)
+
+    # =========================================================
+    # ================== TAB 2 – TABLA =========================
+    # =========================================================
+    with tab_tabla:
+        st.markdown("**Detalle de ítems (vista completa)**")
+
+        df_view_disp = df_view.copy()
+        df_view_disp["Participacion_%"] = df_view_disp["Participacion_%"].round(2)
+
+        if has_monto:
+            df_view_disp["Monto_USD_fmt"] = df_view_disp["Monto_USD"].apply(
+                lambda x: f"${x:,.0f}" if pd.notna(x) else ""
+            )
+        else:
+            df_view_disp["Monto_USD_fmt"] = ""
+
+        st.data_editor(
+            df_view_disp[["Item", "Categoria", "Participacion_%", "Monto_USD_fmt"]],
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            column_config={
+                "Item": st.column_config.TextColumn("Ítem", width="medium"),
+                "Categoria": st.column_config.TextColumn("Categoría", width="medium"),
+                "Participacion_%": st.column_config.NumberColumn(
+                    "Participación (%)", format="%.2f %%"
+                ),
+                "Monto_USD_fmt": st.column_config.TextColumn(
+                    "Monto (USD)", help="Monto calculado desde % y CAPEX base", disabled=True
+                ),
+            }
+        )
 
    
 
-# --- Pie por participación (sobre lo filtrado) ---
-st.markdown("#### Participación CAPEX [%]")
-
-fig_capex_pie = px.pie(
-    df_view.fillna({"Participacion_%": 0}),
-    names="Item",
-    values="Participacion_%",
-    hole=0.55
-)
-fig_capex_pie.update_traces(textposition="inside", texttemplate="%{percent:.1%}")
-# título fuera + leyenda abajo
-fig_capex_pie.update_layout(
-    title=None,
-    legend=dict(orientation="h", y=-0.2, x=0.0),
-    margin=dict(l=10, r=10, t=10, b=80)
-)
-fig_capex_pie = apply_plotly_theme(fig_capex_pie, "", "", "", height=360)
-
-if has_monto and np.isfinite(tot_monto):
-    fig_capex_pie.add_annotation(
-        text=f"Total<br>${tot_monto:,.0f}",
-        showarrow=False,
-        font=dict(size=14, color=GRAY_1),
-        x=0.5, y=0.5, xref="paper", yref="paper"
+    # ====== Descargas ======
+    capex_buf = io.StringIO()
+    capex_df.to_csv(capex_buf, index=False)
+    st.download_button(
+        "📥 Descargar CAPEXV2 (CSV limpio)",
+        capex_buf.getvalue(),
+        file_name="capexv2.csv",
+        mime="text/csv"
     )
 
-st.plotly_chart(fig_capex_pie, use_container_width=True)
-
-# === Descargas
-capex_buf = io.StringIO()
-capex_df.to_csv(capex_buf, index=False)
-st.download_button("📥 Descargar CAPEXV2 (CSV limpio)", capex_buf.getvalue(),
-                   file_name="capexv2.csv", mime="text/csv")
-
-grp_buf = io.StringIO()
-grp.to_csv(grp_buf, index=False)
-st.download_button("📥 Descargar Subtotales por Categoría (CSV)", grp_buf.getvalue(),
-                   file_name="capexv2_subtotales_categoria.csv", mime="text/csv")
-# =========================
-# CNE · Hoja 1 (URL -> Tabla técnica + Gráficos)
-# =========================
-st.markdown("---")
-st.header("Propuesta Capex para PILOTO")
-
-CNE_URL_DEFAULT = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRb9avOuK8IILVQcc5WKSK9C01pRODcOtO60RNqwo-RstqV3kpEwEzyCM0X5TeEBf9Jje76370ly74d/pub?gid=574902636&single=true&output=csv"
-cne_url = st.text_input("URL CNE (Hoja 1 en CSV)", value=CNE_URL_DEFAULT)
-
-def _read_cne_table(url: str) -> pd.DataFrame | None:
-    """Lee la hoja CNE (Hoja 1). Devuelve columnas: Item, Categoria, CATE2, Participacion_% (float)."""
-    try:
-        df = pd.read_csv(url, dtype=str)
-    except Exception as e:
-        st.error(f"No se pudo leer la hoja CNE: {e}")
-        return None
-
-    df.columns = [str(c).strip() for c in df.columns]
-
-    def find_col(keys: list[str]) -> str | None:
-        for c in df.columns:
-            lc = c.lower()
-            if any(k in lc for k in keys):
-                return c
-        return None
-
-    c_item = find_col(["item", "concepto", "descripcion", "descripción", "nombre"])
-    c_cat  = find_col(["categoria", "categoría"])
-    c_c2   = find_col(["cate 2", "cate2", "tipo", "montaje", "suministro"])
-    c_pct  = find_col(["particip", "%", "norm_%", "porcentaje"])
-
-    if not (c_item and c_pct):
-        st.warning("No se detectaron las columnas mínimas (Item y %). Revisa la hoja.")
-        return None
-
-    out = pd.DataFrame({
-        "Item": df[c_item].astype(str).str.strip(),
-        "Participacion_%": df[c_pct].astype(str),
-    })
-    out["Categoria"] = df[c_cat].astype(str).str.strip() if c_cat else "—"
-    out["CATE2"]     = df[c_c2].astype(str).str.strip() if c_c2 else "—"
-
-    # Normalizar % (coma/punto y símbolos)
-    out["Participacion_%"] = pd.to_numeric(
-        out["Participacion_%"]
-          .str.replace("%", "", regex=False)
-          .str.replace(",", ".", regex=False)
-          .str.replace(r"[^0-9.\-]", "", regex=True),
-        errors="coerce"
+    grp_buf = io.StringIO()
+    grp.to_csv(grp_buf, index=False)
+    st.download_button(
+        "📥 Descargar Subtotales por Categoría (CSV)",
+        grp_buf.getvalue(),
+        file_name="capexv2_subtotales_categoria.csv",
+        mime="text/csv"
     )
-
-    out = out.dropna(subset=["Item"]).reset_index(drop=True)
-
-    # Si viene 0–1 => pasar a 0–100
-    max_pct = out["Participacion_%"].max(skipna=True)
-    if pd.notna(max_pct) and max_pct <= 1.0:
-        out["Participacion_%"] = out["Participacion_%"] * 100.0
-
-    out["Participacion_%"] = out["Participacion_%"].clip(lower=0)
-    return out
-
-# 1) Leer tabla CNE
-cne_df = _read_cne_table(cne_url)
-if cne_df is None or not len(cne_df):
-    st.stop()
-
-# 2) CAPEX base por 1 turbina
-st.markdown("### Desgloce de Capex Piloto")
-
-# Potencia sugerida desde la curva (si existe)
-try:
-    pot_kw_sugerida = float(pc_df["P_KW"].max())
-    if not np.isfinite(pot_kw_sugerida) or pot_kw_sugerida <= 0:
-        pot_kw_sugerida = 80.0
-except Exception:
-    pot_kw_sugerida = 80.0
-
-capex_mode = st.radio(
-    "Fuente del CAPEX",
-    ["Desde kW × $/kW", "Ingresar monto manual"],
-    index=0, horizontal=True,
-    help="Para un piloto de 1 turbina, normalmente usa kW × $/kW."
-)
-
-col_cap1, col_cap2, col_cap3 = st.columns([1,1,1])
-
-with col_cap1:
-    pot_kw_turbina = st.number_input(
-        "Potencia de la turbina (kW)",
-        min_value=1.0, value=float(pot_kw_sugerida), step=1.0
-    )
-with col_cap2:
-    usd_por_kw = st.number_input(
-        "Precio turbina ($/kW)",
-        min_value=0.0, value=1700.0, step=10.0
-    )
-with col_cap3:
-    if capex_mode == "Desde kW × $/kW":
-        capex_total_input = float(pot_kw_turbina) * float(usd_por_kw)
-        st.number_input("CAPEX total del piloto (USD) (auto)", value=float(capex_total_input),
-                        step=1000.0, disabled=True)
-    else:
-        capex_total_input = st.number_input(
-            "CAPEX total del piloto (USD) (manual)",
-            min_value=0.0,
-            value=float(st.session_state.get("capex_total_directo", 0.0)) or 0.0,
-            step=1000.0
-        )
-
-st.metric("CAPEX 1 turbina", f"${capex_total_input:,.0f}")
-
-# 3) Montos por fila con el CAPEX de 1 turbina
-cne_df = cne_df.copy()
-if capex_total_input > 0:
-    cne_df["Monto_USD"] = (cne_df["Participacion_%"].fillna(0.0) / 100.0) * capex_total_input
-else:
-    cne_df["Monto_USD"] = np.nan
-
-# =========================
-# UI PRO — KPIs + Tablas (a prueba de orden)
-# Requiere: cne_df (con Participacion_% y, opcionalmente, Monto_USD) y capex_total_input
-# =========================
-
-def _ensure_kpis_and_aggregates(cne_df: pd.DataFrame, capex_total_input: float):
-    # KPIs base
-    sum_pct = float(cne_df["Participacion_%"].sum(skipna=True))
-
-    by_c2 = (
-        cne_df.groupby("CATE2", dropna=False)["Participacion_%"]
-              .sum().reset_index()
-    )
-    pct_suministro = float(
-        by_c2.loc[by_c2["CATE2"].str.lower().str.contains("suministro", na=False),
-                  "Participacion_%"].sum()
-    )
-    pct_montaje = float(
-        by_c2.loc[by_c2["CATE2"].str.lower().str.contains("montaje", na=False),
-                  "Participacion_%"].sum()
-    )
-
-    # Subtotales
-    agg = {"Participacion_%": "sum"}
-    if capex_total_input > 0:
-        agg["Monto_USD"] = "sum"
-
-    sub_item = (
-        cne_df.groupby("Item", dropna=False)
-              .agg(agg).reset_index()
-              .sort_values(("Monto_USD" if capex_total_input>0 else "Participacion_%"), ascending=False)
-    )
-    sub_cat = (
-        cne_df.groupby("Categoria", dropna=False)
-              .agg(agg).reset_index()
-              .sort_values(("Monto_USD" if capex_total_input>0 else "Participacion_%"), ascending=False)
-    )
-    return sum_pct, pct_suministro, pct_montaje, by_c2, sub_item, sub_cat
-
-# Calcula/recupera todo de forma segura (evita NameError)
-sum_pct, pct_suministro, pct_montaje, by_c2, sub_item, sub_cat = _ensure_kpis_and_aggregates(cne_df, capex_total_input)
-
-# ---------- Estilos UI ----------
-st.markdown("""
-<style>
-.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:10px 0 18px}
-.kpi-card{border:1px solid rgba(0,0,0,.07);border-radius:14px;padding:14px 16px;
-          background:linear-gradient(180deg,#FAFCFF 0%,#FFFFFF 100%);box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.kpi-title{font-size:12px;color:#39424E;letter-spacing:.02em;margin:0 0 6px 0;text-transform:uppercase}
-.kpi-value{font-weight:700;font-size:28px;line-height:1.1;color:#101828;margin:0}
-.kpi-sub{font-size:12px;color:#6B7280;margin-top:6px}
-.badge-ok{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;background:#DCFCE7;
-          color:#166534;border:1px solid #86EFAC;margin-left:8px}
-.badge-warn{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;background:#FEF3C7;
-            color:#92400E;border:1px solid #FCD34D;margin-left:8px}
-[data-testid="stDataEditor"] table{font-size:13px}
-[data-testid="stDataEditor"] thead tr th{background:#F8FAFC}
-[data-testid="stDataEditor"] tbody tr:nth-child(odd){background:#FCFCFD}
-</style>
-""", unsafe_allow_html=True)
-
-badge_norm = '<span class="badge-ok">Normalizado</span>' if 99.5 <= sum_pct <= 100.5 else '<span class="badge-warn">Revisar</span>'
-
-# ---------- Tarjetas KPI ----------
-st.markdown(f"""
-<div class="kpi-grid">
-  <div class="kpi-card">
-    <p class="kpi-title">CAPEX 1 turbina</p>
-    <p class="kpi-value">${capex_total_input:,.0f}</p>
-    <div class="kpi-sub">Potencia: {pot_kw_turbina:,.0f} kW · ${usd_por_kw:,.0f}/kW</div>
-  </div>
-  <div class="kpi-card">
-    <p class="kpi-title">Suma de %</p>
-    <p class="kpi-value">{sum_pct:,.2f}% {badge_norm}</p>
-    <div class="kpi-sub">Objetivo ≈ 100%</div>
-  </div>
-  <div class="kpi-card">
-    <p class="kpi-title">% Suministro</p>
-    <p class="kpi-value">{pct_suministro:,.2f}%</p>
-    <div class="kpi-sub">CATE2 = Suministro</div>
-  </div>
-  <div class="kpi-card">
-    <p class="kpi-title">% Montaje</p>
-    <p class="kpi-value">{pct_montaje:,.2f}%</p>
-    <div class="kpi-sub">CATE2 = Montaje</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ---------- Tablas “Subtotales” (con formato) ----------
-st.subheader("Subtotales")
-
-def _fmt_usd(x): 
-    return f"${x:,.0f}" if pd.notna(x) and np.isfinite(x) else ""
-
-_item_disp = sub_item.copy()
-_cat_disp  = sub_cat.copy()
-_item_disp["Participacion_%"] = _item_disp["Participacion_%"].round(2)
-_cat_disp["Participacion_%"]  = _cat_disp["Participacion_%"].round(2)
-
-if "Monto_USD" in _item_disp.columns:
-    _item_disp["Monto_USD_fmt"] = _item_disp["Monto_USD"].map(_fmt_usd)
-if "Monto_USD" in _cat_disp.columns:
-    _cat_disp["Monto_USD_fmt"]  = _cat_disp["Monto_USD"].map(_fmt_usd)
-
-c1, c2 = st.columns(2)
-with c1:
-    st.markdown("**Por Ítem**")
-    st.data_editor(
-        _item_disp[["Item","Participacion_%"] + (["Monto_USD_fmt"] if "Monto_USD_fmt" in _item_disp.columns else [])],
-        use_container_width=True, hide_index=True, disabled=True,
-        column_config={
-            "Item": st.column_config.TextColumn("Item", width="medium"),
-            "Participacion_%": st.column_config.NumberColumn("Participación (%)", format="%.2f %%"),
-            "Monto_USD_fmt": st.column_config.TextColumn("Monto (USD)"),
-        }
-    )
-with c2:
-    st.markdown("**Por Categoría**")
-    st.data_editor(
-        _cat_disp[["Categoria","Participacion_%"] + (["Monto_USD_fmt"] if "Monto_USD_fmt" in _cat_disp.columns else [])],
-        use_container_width=True, hide_index=True, disabled=True,
-        column_config={
-            "Categoria": st.column_config.TextColumn("Categoría", width="medium"),
-            "Participacion_%": st.column_config.NumberColumn("Participación (%)", format="%.2f %%"),
-            "Monto_USD_fmt": st.column_config.TextColumn("Monto (USD)"),
-        }
-    )
-
-
-## =========================
-# 6) Gráficos — paleta profesional
-# =========================
-st.subheader("Gráficos")
-
-# Paleta pro (slate + teal, desaturada)
-PALETTE_PRO = {
-    "ink":   "#1F2937",  # gray-800
-    "slate": "#334155",  # slate-700
-    "slateL":"#64748B",  # slate-500
-    "teal":  "#0F766E",  # teal-700
-    "tealL": "#14B8A6",  # teal-500
-}
-
-metrica_y    = "Monto_USD" if capex_total_input > 0 else "Participacion_%"
-etiqueta_txt = "$%{x:,.0f}" if capex_total_input > 0 else "%{x:.2f}%"
-ylab         = "USD" if capex_total_input > 0 else "%"
-
-# ---------------- Barras por Ítem (horizontal) ----------------
-_sub_item = sub_item.sort_values(metrica_y, ascending=True)
-
-fig_item = px.bar(
-    _sub_item,
-    x=metrica_y, y="Item",
-    orientation="h",
-    text=metrica_y
-)
-fig_item = apply_plotly_theme(fig_item, "Participación por ítem", "", ylab, height=420)
-fig_item.update_traces(
-    texttemplate=etiqueta_txt,
-    textposition="outside",
-    cliponaxis=False,
-    opacity=0.95,
-    marker=dict(
-        color=PALETTE_PRO["slate"],
-        line=dict(color="rgba(0,0,0,.15)", width=1.2)
-    ),
-    hovertemplate="<b>%{y}</b><br>" + ("$%{x:,.0f}" if capex_total_input>0 else "%{x:.2f}%") + "<extra></extra>"
-)
-fig_item.update_layout(showlegend=False)
-fig_item.update_xaxes(title_text=ylab, automargin=True)
-fig_item.update_yaxes(title_text="", automargin=True)
-st.plotly_chart(fig_item, use_container_width=True)
-
-# ---------------- Donut por CATE2 (Suministro / Montaje) ----------------
-# Mapeo de color explícito para nombres comunes (con fallback por minúsculas)
-color_map_c2 = {
-    "Suministro": PALETTE_PRO["teal"],  "suministro": PALETTE_PRO["teal"],
-    "Montaje":    PALETTE_PRO["slate"], "montaje":    PALETTE_PRO["slate"],
-}
-
-fig_c2 = px.pie(
-    by_c2, names="CATE2", values="Participacion_%",
-    hole=0.55, color="CATE2", color_discrete_map=color_map_c2
-)
-fig_c2 = apply_plotly_theme(fig_c2, "Distribución por CATE2", "", "", height=320)
-fig_c2.update_traces(
-    textposition="inside",
-    texttemplate="%{percent:.1%}",
-    marker=dict(line=dict(color="white", width=2))
-)
-fig_c2.update_layout(legend=dict(orientation="h", y=-0.2, x=0.0))
-fig_c2.add_annotation(
-    text=f"Total<br>{sum_pct:,.1f}%",
-    showarrow=False, x=0.5, y=0.5, xref="paper", yref="paper",
-    font=dict(size=14, color=PALETTE_PRO["ink"])
-)
-st.plotly_chart(fig_c2, use_container_width=True)
-
-# ---------------- Barras por Categoría (horizontal) ----------------
-_sub_cat = sub_cat.sort_values(metrica_y, ascending=True)
-
-fig_cat = px.bar(
-    _sub_cat,
-    x=metrica_y, y="Categoria",
-    orientation="h",
-    text=metrica_y
-)
-fig_cat = apply_plotly_theme(fig_cat, "Participación por categoría", "", ylab, height=420)
-fig_cat.update_traces(
-    texttemplate=etiqueta_txt,
-    textposition="outside",
-    cliponaxis=False,
-    opacity=0.95,
-    marker=dict(
-        color=PALETTE_PRO["teal"],
-        line=dict(color="rgba(0,0,0,.15)", width=1.2)
-    ),
-    hovertemplate="<b>%{y}</b><br>" + ("$%{x:,.0f}" if capex_total_input>0 else "%{x:.2f}%") + "<extra></extra>"
-)
-fig_cat.update_layout(showlegend=False)
-fig_cat.update_xaxes(title_text=ylab, automargin=True)
-fig_cat.update_yaxes(title_text="", automargin=True)
-st.plotly_chart(fig_cat, use_container_width=True)
-
-# 7) Descargas
-cne_buf = io.StringIO(); cne_df.to_csv(cne_buf, index=False)
-st.download_button("📥 Descargar tabla CNE limpia (CSV)", cne_buf.getvalue(),
-                   file_name="cne_hoja1_limpia.csv", mime="text/csv")
-
-sub_item_buf = io.StringIO(); sub_item.to_csv(sub_item_buf, index=False)
-st.download_button("📥 Descargar subtotales por Ítem (CSV)", sub_item_buf.getvalue(),
-                   file_name="cne_subtotales_item.csv", mime="text/csv")
-
-sub_cat_buf = io.StringIO(); sub_cat.to_csv(sub_cat_buf, index=False)
-st.download_button("📥 Descargar subtotales por Categoría (CSV)", sub_cat_buf.getvalue(),
-                   file_name="cne_subtotales_categoria.csv", mime="text/csv")
-

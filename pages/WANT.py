@@ -3,6 +3,10 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 from math import pi, sqrt
+from contextlib import contextmanager
+from html import escape
+from pathlib import Path
+import base64
 import io
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -33,6 +37,7 @@ COLOR_SEQ = [
 px.defaults.color_discrete_sequence = COLOR_SEQ
 
 st.set_page_config(page_title="Diseño VAWT – Aerodinámica + Generador GDG-1100", layout="wide")
+st.markdown('<div id="top"></div>', unsafe_allow_html=True)
 
 
 # ====== ESTILO GLOBAL (comentarios + KPIs) ======
@@ -40,6 +45,10 @@ st.set_page_config(page_title="Diseño VAWT – Aerodinámica + Generador GDG-11
 
 st.markdown("""
 <style>
+
+.main .block-container {
+    padding-top: 0.5rem;
+}
 
 .kpi-card {
     background: linear-gradient(135deg, #0E1525 0%, #1A2233 100%);
@@ -57,6 +66,19 @@ st.markdown("""
 .kpi-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+}
+
+.hero-banner {
+    width: 100%;
+    height: 280px;
+    border-radius: 24px;
+    background-size: cover;
+    background-position: center 20%;
+    margin-bottom: 1.6rem;
+    box-shadow: 0 18px 35px rgba(15,23,42,0.25);
+    border: 1px solid rgba(255,255,255,0.15);
+    position: relative;
+    overflow: hidden;
 }
 
 .kpi-title {
@@ -122,8 +144,203 @@ st.markdown("""
     color: #333;
 }
 
+.sidebar-section {
+    margin: 1.2rem 0 0.4rem;
+    padding: 0.35rem 0.7rem;
+    border-left: 4px solid #2563eb;
+    border-radius: 10px;
+    background: rgba(37, 99, 235, 0.08);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.section-header {
+    margin: 2rem 0 1rem;
+    padding: 0.85rem 1.1rem;
+    border-left: 6px solid #2563eb;
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(219,234,254,0.55), rgba(255,255,255,0.9));
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #0f172a;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+.section-subheader {
+    margin: 1.5rem 0 0.75rem;
+    padding: 0.7rem 0.95rem;
+    border-left: 5px solid #f97316;
+    border: 1px solid rgba(249, 115, 22, 0.35);
+    border-radius: 10px;
+    background: linear-gradient(90deg, rgba(255, 237, 213, 0.55), rgba(255, 255, 255, 0.9));
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #7c2d12;
+    box-shadow: 0 4px 10px rgba(120, 53, 15, 0.08);
+}
+
 </style>
 """, unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+.question-prompt {
+    margin: 0.5rem 0 1rem 0;
+    padding: 0.75rem 1rem;
+    border-left: 4px solid #f97316;
+    background: rgba(249,115,22,0.08);
+    border-radius: 6px;
+    font-weight: 500;
+    color: #7c2d12;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+.margin-card {
+    background: #0f172a;
+    border-radius: 14px;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03), 0 6px 20px rgba(15,23,42,0.25);
+    min-height: 115px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+}
+.margin-card__title {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #cbd5f5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.margin-card__value {
+    font-size: 1.9rem;
+    font-weight: 700;
+}
+.margin-card__badge {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(226,232,240,0.2);
+    color: #f8fafc;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    cursor: help;
+}
+.margin-ok .margin-card__value {
+    color: #22c55e;
+}
+.margin-warn .margin-card__value {
+    color: #facc15;
+}
+.margin-danger .margin-card__value {
+    color: #f87171;
+}
+.margin-neutral .margin-card__value {
+    color: #e2e8f0;
+}
+.range-card {
+    background: #0d1324;
+    border-radius: 14px;
+    padding: 0.8rem 1rem;
+    border: 1px solid rgba(255,255,255,0.05);
+    box-shadow: 0 4px 16px rgba(10,14,26,0.4);
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.2rem;
+}
+.range-card__label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #cbd5f5;
+}
+.range-card__value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #f8fafc;
+}
+.range-card__sub {
+    font-size: 0.85rem;
+    color: #9ca3af;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+.alert-jump-link {
+    display: block;
+    font-weight: 600;
+    text-align: center;
+    padding: 0.6rem 0.4rem;
+    border-radius: 8px;
+    background: linear-gradient(120deg, #f97316, #f43f5e);
+    color: #fff !important;
+    text-decoration: none !important;
+    margin-bottom: 0.8rem;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+}
+.alert-jump-link:hover {
+    filter: brightness(1.05);
+}
+.alert-jump-floating {
+    position: fixed;
+    right: 1.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 999;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    padding: 0.4rem 0.3rem;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #f97316, #f43f5e);
+    color: #fff !important;
+    text-decoration: none !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+.alert-jump-floating:hover {
+    filter: brightness(1.08);
+}
+.top-jump-floating {
+    position: fixed;
+    right: 1.8rem;
+    bottom: 2.2rem;
+    z-index: 999;
+    padding: 0.5rem 0.9rem;
+    border-radius: 999px;
+    background: linear-gradient(120deg, #2563eb, #0ea5e9);
+    color: #fff !important;
+    text-decoration: none !important;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+.top-jump-floating:hover {
+    filter: brightness(1.12);
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown(
+    '<a href="#alertas" class="alert-jump-floating">🚨 Alertas</a>',
+    unsafe_allow_html=True
+)
+st.markdown(
+    '<a href="#top" class="top-jump-floating">⬆️ Inicio</a>',
+    unsafe_allow_html=True
+)
 
 
 def kpi_card(title: str, value: str, subtitle: str, accent: str = "blue") -> None:
@@ -154,6 +371,99 @@ def kpi_card(title: str, value: str, subtitle: str, accent: str = "blue") -> Non
         """,
         unsafe_allow_html=True,
     )
+
+
+def question_prompt(text: str) -> None:
+    st.markdown(f"<div class='question-prompt'>❓ {text}</div>", unsafe_allow_html=True)
+
+
+def section_header(text: str, level: int = 2, anchor: str | None = None) -> None:
+    """
+    Renderiza un encabezado destacado; level<=2 usa estilo principal, level>=3 usa variante compacta.
+    """
+    cls = "section-header" if level <= 2 else "section-subheader"
+    anchor_attr = f" id='{anchor}'" if anchor else ""
+    st.markdown(f"<div class='{cls}'{anchor_attr}>{escape(text)}</div>", unsafe_allow_html=True)
+
+
+@contextmanager
+def section_block(title: str, expanded: bool = True):
+    """Crea un bloque plegable con encabezado estilizado."""
+    with st.expander(title, expanded=expanded):
+        section_header(title)
+        yield
+
+
+def sidebar_section(title: str) -> None:
+    st.markdown(f"<div class='sidebar-section'>{escape(title)}</div>", unsafe_allow_html=True)
+
+
+def comment_box(title: str, body_segments) -> str:
+    """Construye un bloque HTML reutilizable para notas de interpretación."""
+    if isinstance(body_segments, str):
+        body = body_segments
+    else:
+        body = "".join(body_segments)
+    return f"<div class='comment-box'><div class='comment-title'>{title}</div>{body}</div>"
+
+
+def comment_paragraph(text: str) -> str:
+    return f"<p>{text}</p>"
+
+
+# Recursos compartidos (imágenes hero, etc.)
+_HERO_CANDIDATES = [
+    (Path(__file__).parent / "assets" / "hero_vawt.jpg").resolve(),
+    (Path(__file__).parent / "hero_vawt.jpg").resolve(),
+]
+_HERO_CANDIDATES[0].parent.mkdir(parents=True, exist_ok=True)
+
+
+def _hero_path():
+    for candidate in _HERO_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def render_hero_banner() -> None:
+    """Inserta la imagen panorámica superior de manera responsiva."""
+    path = _hero_path()
+    if path:
+        suffix = path.suffix.lower()
+        mime = "image/jpeg"
+        if suffix == ".png":
+            mime = "image/png"
+        elif suffix == ".webp":
+            mime = "image/webp"
+        encoded = base64.b64encode(path.read_bytes()).decode()
+        st.markdown(
+            f"<div class='hero-banner' style=\"background-image:url('data:{mime};base64,{encoded}');\"></div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info(
+            "Agrega la imagen panorámica en `pages/assets/hero_vawt.jpg` "
+            "o en `pages/hero_vawt.jpg` para mostrarla en el encabezado.",
+            icon="🖼️",
+        )
+
+
+def parse_float_list(text: str) -> list[float]:
+    """
+    Convierte una cadena separada por comas en una lista de floats.
+    Ignora entradas vacías o no numéricas.
+    """
+    values = []
+    for raw in str(text).split(","):
+        token = raw.strip()
+        if not token:
+            continue
+        try:
+            values.append(float(token))
+        except ValueError:
+            continue
+    return values
 
 
 st.markdown("""
@@ -457,6 +767,47 @@ def cp_curve_for_plot(cp_params):
         "Cp_upwind":   cp_up,
         "Cp_downwind": cp_down,
     })
+# =========================================================
+# Polar genérica Lift–Drag del perfil (modelo simplificado)
+# =========================================================
+def build_lift_drag_polar(t_rel: float, symmetric: bool):
+    """
+    Genera un polar Cl(α), Cd(α) y Cl/Cd(α) simplificado:
+    - α en [-10°, 20°]
+    - Pendiente dCl/dα ≈ 0.11 1/deg
+    - α0 ≈ 0° simétrico, ≈ -2° camberado
+    - Cd0 aumenta con espesor relativo
+    - k_ind fija (drag inducido ~ Cl^2)
+    """
+    alpha_deg = np.linspace(-10.0, 20.0, 61)
+    alpha0 = 0.0 if symmetric else -2.0          # α de sustentación nula
+
+    # Pendiente de Cl (aprox. 2π rad ≈ 0.11 /deg)
+    cl_slope = 0.11
+    cl_lin = cl_slope * (alpha_deg - alpha0)
+
+    # Stall suave usando saturación tipo tanh
+    stall_deg = 12.0 if symmetric else 10.0
+    cl_max_ref = cl_slope * (stall_deg - alpha0)
+    cl_max = cl_max_ref * (1.0 if symmetric else 1.1)
+    Cl = cl_max * np.tanh(cl_lin / max(cl_max, 1e-3))
+
+    # Drag: Cd = Cd0 + k * Cl^2
+    base_cd0 = 0.01 + 0.002 * (t_rel - 12.0) / 10.0
+    base_cd0 = float(np.clip(base_cd0, 0.008, 0.04))
+    k_ind = 0.02
+    Cd = base_cd0 + k_ind * (Cl ** 2)
+
+    ClCd = np.divide(Cl, Cd, out=np.zeros_like(Cl), where=(Cd > 0))
+
+    return pd.DataFrame({
+        "alpha_deg": alpha_deg,
+        "Cl": Cl,
+        "Cd": Cd,
+        "ClCd": ClCd,
+    })
+
+
 
 
 # Potencia aerodinámica → eje generador (aplica solo pérdidas mecánicas)
@@ -482,6 +833,17 @@ def aep_from_weibull(v_grid, P_grid_W, k, c):
     P_mean = np.trapz(Pw, v_grid)                 # W
     AEP_kWh = P_mean * 8760.0 / 1000.0           # kWh/año
     return AEP_kWh, P_mean
+
+def alpha_cycle_deg(theta_deg, lam, pitch_deg=0.0):
+    """
+    Ángulo de ataque cinemático (modelo 2D ideal).
+    alpha(θ) = atan2(sinθ, λ - cosθ) + pitch
+    Retorna α en grados.
+    """
+    th = np.deg2rad(np.asarray(theta_deg, dtype=float))
+    alpha_rad = np.arctan2(np.sin(th), (lam - np.cos(th)))
+    return np.rad2deg(alpha_rad) + float(pitch_deg)
+
 
 
 # =========================================================
@@ -517,16 +879,45 @@ def build_pdf_report(df_view, figs_dict, kpi_text=""):
     ))
     story.append(Spacer(1, 6))
 
-    df_short = df_view.head(15)
+    df_short = df_view.head(10).reset_index(drop=True)
+
+    if not df_short.empty:
+        df_horizontal = df_short.T.reset_index()
+        df_horizontal = df_horizontal.rename(columns={"index": "Variable"})
+
+        bin_labels = []
+        for idx in range(df_short.shape[0]):
+            v_val = df_short.loc[idx].get("v (m/s)")
+            if pd.notna(v_val):
+                bin_labels.append(f"Bin {idx+1} | v={v_val:.1f} m/s")
+            else:
+                bin_labels.append(f"Bin {idx+1}")
+
+        df_horizontal.columns = ["Variable"] + bin_labels
+        table_data = [df_horizontal.columns.tolist()] + df_horizontal.values.tolist()
+    else:
+        table_data = [["Sin datos"]]
+
+    # Mejorar legibilidad de los encabezados (salto de línea Bin / velocidad)
+    header_style = styles["BodyText"].clone("HeaderTable")
+    header_style.textColor = colors.whitesmoke
+    header_style.fontName = "Helvetica-Bold"
+
+    header_cells = []
+    for col_name in table_data[0]:
+        text = str(col_name)
+        if text.startswith("Bin"):
+            text = text.replace(" | ", "<br/>")
+        header_cells.append(Paragraph(text, header_style))
+    table_data[0] = header_cells
 
     # Ajustar ancho de columnas
     page_width, _ = A4
     table_width = page_width - 2 * cm
-    n_cols = len(df_short.columns)
+    n_cols = len(table_data[0])
     col_widths = [table_width / max(n_cols, 1)] * n_cols
 
-    data = [list(df_short.columns)] + df_short.values.tolist()
-    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b1120")),
@@ -546,35 +937,36 @@ def build_pdf_report(df_view, figs_dict, kpi_text=""):
 
     interpretaciones = {
         "rpm rotor / generador vs velocidad de viento":
-            "Muestra cómo crecen las rpm del rotor y del generador según la ley de control por regiones. "
-            "Permite verificar TSR casi constante en región 2 y que el generador llega a su zona nominal sin sobrepasarla.",
-        "Potencias: aero, mecánica, generador y salida":
-            "Compara la potencia aerodinámica, mecánica, la curva nominal del generador y la potencia eléctrica con clipping. "
-            "Ayuda a ver en qué rango dominan las pérdidas mecánicas, el generador o el límite nominal.",
-        "Cp equivalente por etapa":
-            "Traduce cada etapa a un Cp equivalente (aero, eje, eléctrico) para visualizar dónde se pierden más eficiencias "
-            "entre rotor, tren mecánico, generador y electrónica.",
-        "Pérdidas por etapa":
-            "Área apilada que muestra las pérdidas mecánicas, del generador, de la electrónica y por clipping. "
-            "Sirve para priorizar dónde actuar en rediseño o control.",
+            "Muestra cómo crecen las rpm del rotor y del generador según la ley de control por regiones.",
+        "Curva de potencia (según vista seleccionada)":
+            "Relaciona potencia aerodinámica, mecánica y eléctrica para validar la integración aero–generador.",
         "Par en rotor / generador":
-            "Muestra el par en rotor y generador según el viento. Es clave para dimensionar ejes, rodamientos, caja y límites "
-            "de T_gen_max, evitando sobrepar crítico.",
+            "Dimensiona ejes y confirma que no se exceden los límites IEC ni los de ficha del generador.",
+        "Momento flector en unión pala–struts":
+            "Evolución del momento flector combinado (torque + fuerza centrífuga) para validar límites FEM/IEC en la raíz de pala.",
+        "Cp equivalente por etapa":
+            "Localiza la etapa con mayor degradación de rendimiento (rotor, tren mecánico o electrónica).",
+        "Pérdidas por etapa":
+            "Cuantifica dónde se concentran las pérdidas para priorizar rediseños.",
         "Corriente estimada vs velocidad de viento":
-            "Permite dimensionar cables, protecciones e inversores y comprobar que no se superan las corrientes nominales.",
+            "Asegura compatibilidad eléctrica y evita sobrecorrientes.",
         "Frecuencias 1P / 3P del rotor":
-            "Frecuencias asociadas al paso de palas y cargas periódicas principales, para comparar con modos propios de torre "
-            "y cimentación y evitar resonancias.",
+            "Chequea resonancias entre cargas periódicas y modos estructurales.",
         "Curva Cp(λ) – promedio y componentes":
-            "Curva Cp(λ) con componentes upwind/downwind. La comparación entre λ_opt y el TSR objetivo guía ajustes de "
-            "geometría y control para operar cerca del máximo Cp.",
+            "Verifica que el TSR de control coincida con el máximo Cp disponible.",
         "Ruido estimado vs velocidad de viento":
-            "Nivel de potencia sonora y de presión en función de la velocidad de punta y la distancia de observador, útil "
-            "para verificar cumplimiento de criterios acústicos."
+            "Valida el cumplimiento acústico en el receptor crítico.",
+        "🌬️ Distribución de viento vs curva de potencia":
+            "Mezcla Weibull del sitio con la curva de potencia para derivar AEP y factor de planta."
     }
 
+    if isinstance(figs_dict, dict):
+        figs_iter = figs_dict.items()
+    else:
+        figs_iter = figs_dict
+
     # Gráficos
-    for title, fig in figs_dict.items():
+    for title, fig in figs_iter:
         story.append(Paragraph(title, styles["Heading2"]))
         story.append(Spacer(1, 6))
 
@@ -686,25 +1078,322 @@ def interp_curve(x, x_tab, y_tab):
 # =========================================================
 # UI – Entradas
 # =========================================================
-st.title("🧪 VAWT kW + Generador (aero → mecánico → eléctrico)")
+render_hero_banner()
+st.title("🔬 Plataforma técnica VAWT – Aerodinámica · Tren mecánico · Generador")
+
+# =========================================================
+# Catálogo de perfiles aerodinámicos (NACA + típicos eólicos)
+# =========================================================
+
+AIRFOIL_LIBRARY = {
+    # ---- SIMÉTRICOS (buenos para Darrieus / VAWT) ----
+    "NACA 0012": {
+        "t_rel": 12.0,
+        "symmetric": True,
+        "descripcion": "Perfil simétrico clásico, drag bajo y uso extendido en turbinas de eje horizontal."
+    },
+    "NACA 0015": {
+        "t_rel": 15.0,
+        "symmetric": True,
+        "descripcion": "Simétrico, compromiso entre arrastre y rigidez. Muy usado en prototipos VAWT."
+    },
+    "NACA 0018": {
+        "t_rel": 18.0,
+        "symmetric": True,
+        "descripcion": "Más grueso, mayor rigidez estructural, buen comportamiento en Re moderados."
+    },
+    "NACA 0021": {
+        "t_rel": 21.0,
+        "symmetric": True,
+        "descripcion": "Perfil robusto; buena opción para palas con mayores cargas y fabricación FRP."
+    },
+    "NACA 0024": {
+        "t_rel": 24.0,
+        "symmetric": True,
+        "descripcion": "Muy grueso, prioriza rigidez y fatiga sobre rendimiento aerodinámico máximo."
+    },
+
+    # ---- CAMBERADOS (más lift, más sensibilidad a ángulo) ----
+    "NACA 2412": {
+        "t_rel": 12.0,
+        "symmetric": False,
+        "descripcion": "Camber moderado, usado históricamente en alas; mayor Cl/Cd pero más sensible a pitch."
+    },
+    "NACA 4412": {
+        "t_rel": 12.0,
+        "symmetric": False,
+        "descripcion": "Muy utilizado en eólica HAWT; buen rendimiento en Cl, mayor complejidad en control."
+    },
+    "NACA 4415": {
+        "t_rel": 15.0,
+        "symmetric": False,
+        "descripcion": "Similar al 4412 pero más grueso; buena combinación de aerodinámica y rigidez."
+    },
+    "NACA 4418": {
+        "t_rel": 18.0,
+        "symmetric": False,
+        "descripcion": "Perfil con camber y espesor altos; pensado para cargas importantes y alta sustentación."
+    },
+
+    # ---- Ejemplo “VAWT-friendly” genérico ----
+    "NACA 0022 (VAWT FRP)": {
+        "t_rel": 22.0,
+        "symmetric": True,
+        "descripcion": "Perfil grueso y simétrico como el que estás usando en el piloto; robusto y tolerante a stall dinámico."
+    },
+}
+
 
 with st.sidebar:
 
+    st.markdown('<a href="#alertas" class="alert-jump-link">🚨 Ir a alertas</a>', unsafe_allow_html=True)
+
+    sidebar_section("1️⃣ Geometría y pala")
     # Geometría
     with st.expander("Geometría", expanded=False):
-        D = st.number_input("Diámetro D [m]",  min_value=2.0, value=14.0, step=0.5)
-        H = st.number_input("Altura H [m]",    min_value=2.0, value=14.0, step=0.5)
+        D = st.number_input("Diámetro D [m]",  min_value=2.0, value=11.0, step=0.5)
+        H = st.number_input("Altura H [m]",    min_value=2.0, value=18.0, step=0.5)
         N = st.number_input("Nº de palas N",   min_value=2,   value=3, step=1)
         c = st.number_input("Cuerda c [m]",    min_value=0.1, value=0.80, step=0.05)
     
+    # Perfil de pala / masa
+    with st.expander("Perfil de pala / masa", expanded=False):
+        # === Modo de selección de perfil ===
+        modo_perfil = st.radio(
+            "Modo de selección de perfil",
+            ["Catálogo NACA", "Personalizado"],
+            horizontal=True
+        )
+
+        if modo_perfil == "Catálogo NACA":
+            # Ordenamos para que quede bonito en el selector
+            airfoil_keys = sorted(AIRFOIL_LIBRARY.keys())
+
+            airfoil_name = st.selectbox(
+                "Perfil NACA",
+                airfoil_keys,
+                index=airfoil_keys.index("NACA 0022 (VAWT FRP)") if "NACA 0022 (VAWT FRP)" in airfoil_keys else 0,
+            )
+
+            af_data = AIRFOIL_LIBRARY[airfoil_name]
+            t_rel = af_data["t_rel"]
+            is_symmetric = af_data["symmetric"]
+            tipo_perfil = "Simétrico" if is_symmetric else "Asimétrico"
+
+            st.caption(
+                f"e/c ≈ {t_rel:.0f} % – {af_data['descripcion']}"
+            )
+
+            # Permitimos ajustar finamente el pitch aunque el perfil venga predefinido
+            pitch_deg = st.slider(
+                "Ángulo de calaje (pitch) [°]",
+                min_value=-10.0, max_value=10.0,
+                value=0.0,
+                step=0.25,
+                help="Controla el pitch del perfil seleccionado y refresca α(θ) en tiempo real."
+            )
+
+        else:
+            # === Modo completamente personalizado ===
+            airfoil_name = st.text_input("Perfil (ej: NACA 0018)", "NACA 0022")
+            tipo_perfil  = st.selectbox("Tipo de perfil", ["Simétrico", "Asimétrico"])
+            is_symmetric = (tipo_perfil == "Simétrico")
+
+            t_rel = st.number_input(
+                "Espesor relativo e/c [%]",
+                min_value=8.0,
+                max_value=40.0,
+                value=22.0,
+                step=1.0
+            )
+
+            pitch_deg = st.slider(
+                "Ángulo de calaje (pitch) [°]",
+                min_value=-10.0, max_value=10.0,
+                value=0.0,
+                step=0.25,
+                help="Controla el pitch del perfil seleccionado y refresca α(θ) en tiempo real."
+            )
+
+        # ---- Parámetros de masa / geometría helicoidal (comunes a ambos modos) ----
+        st.markdown("**Tweaks aerodinámicos / masa**")
+        helical     = st.checkbox("Helicoidal 60–90°", True, help="Activa la pala helicoidal y aplica su ángulo en Cp(λ).")
+        endplates   = st.checkbox("End-plates / winglets", False)
+        trips       = st.checkbox("Trips / micro-tabs", False)
+        struts_perf = st.checkbox("Struts perfilados (0012)", False)
+        m_blade = st.number_input(
+            "Masa por pala [kg]",
+            min_value=10.0,
+            value=180.0,
+            step=10.0
+        )
+
+        helix_angle_deg = st.number_input(
+            "Ángulo helicoidal pala [°]",
+            min_value=0.0, max_value=90.0,
+            value=60.0,
+            step=5.0
+        )
+
+        helix_rad = np.deg2rad(helix_angle_deg)
+        blade_span = H / max(np.cos(helix_rad), 1e-3)
+        st.caption(f"Longitud de pala estimada ≈ {blade_span:.1f} m (helix {helix_angle_deg:.0f}°)")
+
+        struts_per_blade = st.number_input(
+            "N° de struts por pala",
+            min_value=1,
+            value=3,
+            step=1,
+            help="Cantidad de vigas/brazos que conectan cada pala con la torre; se usa para repartir el momento flector."
+        )
+
+        # Configuración detallada por strut
+        default_distances = np.array([13.0, 11.0, 13.0], dtype=float)
+        default_weights = np.full(int(struts_per_blade), 1.0 / max(struts_per_blade, 1))
+
+        if "strut_dist_input" not in st.session_state or st.session_state.get("strut_dist_count") != int(struts_per_blade):
+            st.session_state["strut_dist_input"] = ", ".join(f"{d:.1f}" for d in default_distances)
+            st.session_state["strut_dist_count"] = int(struts_per_blade)
+
+        if "strut_weight_input" not in st.session_state or st.session_state.get("strut_weight_count") != int(struts_per_blade):
+            st.session_state["strut_weight_input"] = ", ".join(f"{w:.2f}" for w in default_weights)
+            st.session_state["strut_weight_count"] = int(struts_per_blade)
+
+        strut_dist_input = st.text_input(
+            "Distancias de struts [m] (separadas por coma)",
+            key="strut_dist_input",
+            help="Ejemplo: 17, 9, 2  → representa las distancias desde el eje a cada viga."
+        )
+        strut_weight_input = st.text_input(
+            "Ponderación relativa por strut",
+            key="strut_weight_input",
+            help="Normaliza cómo reparte el momento cada viga (por defecto iguales)."
+        )
+
+        strut_distances = parse_float_list(strut_dist_input)
+        if not strut_distances:
+            strut_distances = default_distances.tolist()
+        if len(strut_distances) < int(struts_per_blade):
+            strut_distances.extend([strut_distances[-1]] * (int(struts_per_blade) - len(strut_distances)))
+        elif len(strut_distances) > int(struts_per_blade):
+            strut_distances = strut_distances[: int(struts_per_blade)]
+
+        strut_weights = parse_float_list(strut_weight_input)
+        if len(strut_weights) != len(strut_distances) or not strut_weights:
+            strut_weights = [1.0] * len(strut_distances)
+
+        total_weight = sum(strut_weights)
+        if total_weight <= 0:
+            total_weight = len(strut_weights)
+            strut_weights = [1.0] * len(strut_distances)
+        lever_arm_pala = float(np.dot(strut_distances, strut_weights) / total_weight)
+        weights_norm = [w / total_weight for w in strut_weights]
+
+        df_struts = pd.DataFrame({
+            "Strut #": list(range(1, len(strut_distances) + 1)),
+            "Distancia [m]": np.round(strut_distances, 2),
+            "Peso relativo": np.round(weights_norm, 3),
+        })
+        st.dataframe(df_struts, hide_index=True, use_container_width=True)
+        st.caption(
+            f"Brazo efectivo calculado ≈ {lever_arm_pala:.2f} m (suma de ponderaciones = {sum(weights_norm):.2f})."
+        )
+        st.caption(
+            "Tip: ingresa las alturas reales de unión (ej. 2, 9, 17 m para una pala de 18 m) y asigna pesos mayores a "
+            "los struts que capturan más carga según tu FEM. Si todos comparten la misma palanca, deja distancias iguales "
+            "y solo ajusta la ponderación."
+        )
+
+    with st.expander("Propiedades estructurales avanzadas", expanded=False):
+        section_modulus_root = st.number_input(
+            "Módulo resistente raíz W [m³]",
+            min_value=0.001,
+            value=0.075,
+            step=0.005,
+            help="Define la capacidad a flexión en la unión pala–struts. Valores mayores implican perfiles más robustos."
+        )
+        sigma_y_pala_mpa = st.number_input(
+            "σ_y pala / raíz [MPa]",
+            min_value=50.0,
+            value=180.0,
+            step=5.0,
+            help="Límite de fluencia o admisible del laminado / unión en la raíz."
+        )
+        strut_area_cm2 = st.number_input(
+            "Área efectiva strut [cm²]",
+            min_value=5.0,
+            value=40.0,
+            step=1.0,
+            help="Área metálica equivalente por strut para estimar esfuerzos axiales."
+        )
+        sigma_allow_strut_mpa = st.number_input(
+            "σ admisible strut [MPa]",
+            min_value=50.0,
+            value=250.0,
+            step=5.0,
+            help="Tensión axial permitida en los struts (considera material + soldaduras)."
+        )
+        safety_target = st.number_input(
+            "Factor de seguridad objetivo",
+            min_value=1.0,
+            value=1.5,
+            step=0.1,
+            help="Usado como referencia para sombrear los gráficos de stress."
+        )
+        with st.expander("Guías y rangos sugeridos", expanded=False):
+            st.markdown("""
+**Raíz FRP / aluminio (pilotos 10–60 kW)**
+- Módulo resistente W: 0.04–0.10 m³ según espesor del laminado.
+- σ_y pala: 120–200 MPa (laminados infundidos + insertos metálicos).
+
+**Struts tubulares de acero ASTM A500**
+- Área efectiva típica: 30–60 cm² (tubos 120–180 mm, t=5–8 mm).
+- σ admisible: 200–260 MPa (fluencia 345 MPa con FS≈1.5).
+
+**Struts de aluminio 6061-T6**
+- Área efectiva: 45–80 cm² (perfiles más gruesos para compensar módulo).
+- σ admisible: 140–180 MPa (fluencia 240 MPa / FS 1.3–1.5).
+
+**Recomendaciones**
+- FS objetivo ≥1.3 para operación normal, ≥1.7 si el sitio tiene ráfagas severas.
+- Si no tienes FEM, arranca por W ≈ (π·c·t³)/6 para el bloque de raíz y ajusta con datos de pruebas.
+""")
+
+    sidebar_section("2️⃣ Operación y entorno")
+    # Precalcular λ_opt estimado con la configuración actual
+    R_preview = D / 2.0
+    sig_int_preview = solidity_int(N, c, R_preview)
+    lam_ctrl_default = 2.5
+    cp_preview = None
+    try:
+        cp_preview = build_cp_params(
+            lam_opt_base=2.6,
+            cmax_base=0.33,
+            shape=1.0,
+            sigma=sig_int_preview,
+            helical=helical,
+            helix_angle_deg=helix_angle_deg,
+            endplates=endplates,
+            trips=trips,
+            struts_perf=struts_perf,
+            airfoil_thickness=t_rel,
+            symmetric=is_symmetric,
+            pitch_deg=pitch_deg,
+        )
+        lam_ctrl_default = float(cp_preview.get("lam_opt", lam_ctrl_default))
+    except Exception:
+        pass
+
+    # Operación / control
     with st.expander("Operación / Control", expanded=False):
 
-        # TSR óptimo para control MPPT
         lam_opt_ctrl = st.number_input(
             "TSR objetivo λ (control)",
-            min_value=1.6,
-            value=2.47,   # aquí defines tu λ_opt de operación
-            step=0.05
+            min_value=1.5,
+            max_value=5.0,
+            value=lam_ctrl_default,
+            step=0.01,
+            help="Setpoint MPPT utilizado para la ley rpm–v en Región 2. Por defecto igual al λ_opt estimado."
         )
         tsr = lam_opt_ctrl  # este TSR se usa en las ecuaciones aero
 
@@ -717,33 +1406,6 @@ with st.sidebar:
         v_cut_in  = st.number_input("v_cut-in [m/s]",  min_value=0.5, value=3.0, step=0.5)
         v_rated   = st.number_input("v_rated [m/s]",   min_value=v_cut_in + 0.5, value=12.0, step=0.5)
         v_cut_out = st.number_input("v_cut-out [m/s]", min_value=v_rated + 0.5, value=20.0, step=0.5)
-
-
-    # Tweaks aerodinámicos
-    with st.expander("Tweaks aerodinámicos", expanded=False):
-        helical     = st.checkbox("Helicoidal 60–90°", True)
-        endplates   = st.checkbox("End-plates / winglets", False)
-        trips       = st.checkbox("Trips / micro-tabs", False)
-        struts_perf = st.checkbox("Struts perfilados (0012)", False)
-
-    # Perfil de pala / masa
-    with st.expander("Perfil de pala / masa", expanded=False):
-        airfoil_name = st.text_input("Perfil (ej: NACA 0018)", "NACA 0022")
-        tipo_perfil  = st.selectbox("Tipo de perfil", ["Simétrico", "Asimétrico"])
-        is_symmetric = (tipo_perfil == "Simétrico")
-        t_rel = st.number_input("Espesor relativo e/c [%]", min_value=8.0, max_value=40.0, value=22.0, step=1.0)
-        pitch_deg = st.number_input("Ángulo de calaje (pitch) [°]", min_value=-10.0, max_value=10.0, value=0.0, step=0.5)
-        m_blade = st.number_input("Masa por pala [kg]", min_value=10.0, value=120.0, step=10.0)
-        helix_angle_deg = st.number_input("Ángulo helicoidal pala [°]", min_value=0.0, max_value=90.0, value=60.0, step=5.0)
-        use_H_for_span = st.checkbox("Usar H para longitud de pala", True)
-        
-
-        if use_H_for_span:
-            helix_rad = np.deg2rad(helix_angle_deg)
-            blade_span = H / max(np.cos(helix_rad), 1e-3)
-            st.caption(f"Longitud de pala estimada ≈ {blade_span:.1f} m (helix {helix_angle_deg:.0f}°)")
-        else:
-            blade_span = st.number_input("Longitud de pala [m]", min_value=H*0.5, value=float(H), step=0.5)
 
     # Rango de vientos
     with st.expander("Rango de vientos / Muestreo", expanded=False):
@@ -771,7 +1433,8 @@ with st.sidebar:
             help="Sensibilidad del ruido a la velocidad de punta"
         )
 
-        # --- Tren de potencia / Generador ---
+    sidebar_section("3️⃣ Tren de potencia y electrónica")
+    # --- Tren de potencia / Generador ---
     with st.expander("Tren de potencia / Generador", expanded=False):
 
         # 0) Selección de modelo de generador
@@ -782,11 +1445,11 @@ with st.sidebar:
             index=0,
         )
         GEN = GENERATORS[gen_key]
-            # --- Alias globales para compatibilidad con el resto del código ---
+
+        # --- Alias globales para compatibilidad con el resto del código ---
         GDG_RATED_T_Nm = GEN["T_nom"]
         GDG_RATED_I    = GEN["I_nom"]
         GDG_RATED_RPM  = GEN["rpm_nom"]
-
 
         st.markdown(
             f"""
@@ -874,8 +1537,85 @@ with st.sidebar:
             step=50.0,
         )
 
+    with st.expander("Electrónica / red avanzada", expanded=False):
+        pf_setpoint = st.slider(
+            "PF operativo (cos φ)",
+            min_value=0.80,
+            max_value=1.00,
+            value=0.95,
+            step=0.01,
+            help="Setpoint de control de factor de potencia que usará la electrónica."
+        )
+        pf_min_grid = st.slider(
+            "PF mínimo exigido por red",
+            min_value=0.80,
+            max_value=1.00,
+            value=0.90,
+            step=0.01,
+        )
+        thd_cap_pct = st.number_input(
+            "THD estimada (filtro LCL) [%]",
+            min_value=1.0,
+            value=3.0,
+            step=0.5,
+            help="Distorsión armónica total esperada en bornes de red tras filtros."
+        )
+        thd_req_pct = st.number_input(
+            "THD límite normativa [%]",
+            min_value=2.0,
+            value=5.0,
+            step=0.5,
+        )
+        lvrt_cap_voltage_pu = st.number_input(
+            "LVRT tensión soportada [pu]",
+            min_value=0.05,
+            max_value=1.00,
+            value=0.15,
+            step=0.01,
+            help="Profundidad de hueco (pu) que el inversor soporta sin dispararse."
+        )
+        lvrt_req_voltage_pu = st.number_input(
+            "LVRT tensión requerida [pu]",
+            min_value=0.05,
+            max_value=1.00,
+            value=0.20,
+            step=0.01,
+            help="Requisito del código de red (normalmente 0.2–0.3 pu)."
+        )
+        lvrt_cap_time_ms = st.number_input(
+            "LVRT tiempo soportado [ms]",
+            min_value=50.0,
+            value=180.0,
+            step=5.0,
+        )
+        lvrt_req_time_ms = st.number_input(
+            "LVRT tiempo requerido [ms]",
+            min_value=50.0,
+            value=150.0,
+            step=5.0,
+        )
+        I_inv_thermal_A = st.number_input(
+            "Corriente térmica inversor [A]",
+            min_value=50.0,
+            value=140.0,
+            step=1.0,
+            help="Corriente RMS máxima continua que soporta el inversor."
+        )
+        V_dc_nom = st.number_input(
+            "Tensión DC nominal [V]",
+            min_value=400.0,
+            value=750.0,
+            step=10.0,
+        )
+        I_dc_nom = st.number_input(
+            "Corriente DC nominal [A]",
+            min_value=20.0,
+            value=120.0,
+            step=5.0,
+        )
 
-    # --- IEC 61400-2 – límites de diseño (expander separado, NO anidado) ---
+    sidebar_section("4️⃣ Normativa, recurso y datos")
+    # --- IEC 61400-2 – límites de diseño ---
     with st.expander("Límites IEC 61400-2 (diseño)", expanded=False):
         rpm_rotor_max_iec = st.number_input(
             "rpm_rotor máx IEC",
@@ -898,17 +1638,27 @@ with st.sidebar:
             step=0.5,
             help="Velocidad de viento a la cual el sistema debe ejecutar parada segura (shutdown)."
         )
+        g_max_pala_iec = st.number_input(
+            "Aceleración radial máx en pala [g]",
+            min_value=5.0,
+            value=25.0,
+            step=1.0,
+            help="Máximo n° de g admisible en la raíz de la pala según criterio estructural/FEM."
+        )
+        M_base_max_iec = st.number_input(
+            "Momento flector máx en raíz [kN·m]",
+            min_value=10.0,
+            value=350.0,
+            step=10.0,
+            help="Límite estructural de momento flector en la raíz de la pala / base de torre."
+        )
 
-
-        # Weibull (opcional)
-    with st.expander("Weibull (opcional)", expanded=False):
-        use_weibull = st.checkbox("Calcular AEP/FP con Weibull", False)
+    # Weibull
+    with st.expander("Weibull", expanded=False):
         k_w = st.number_input("k (forma)",  min_value=1.0, value=2.0, step=0.1)
         c_w = st.number_input("c (escala) [m/s]", min_value=2.0, value=7.5, step=0.5)
 
-    # =========================================================
-    # NUEVO: Datos piloto (SCADA) para calibración
-    # =========================================================
+    # Datos piloto (SCADA) para calibración
     with st.expander("Datos piloto (SCADA)", expanded=False):
         file_scada = st.file_uploader(
             "CSV SCADA (viento, potencia, rpm, corriente)",
@@ -998,8 +1748,13 @@ cp_params = build_cp_params(
 lambda_opt_teo = cp_params["lam_opt"]
 
 # λ que usará el control MPPT para la ley rpm–v en región 2
-# (lo igualamos al óptimo teórico para que λ_opt_ctrl = λ_opt_teo)
-lambda_mppt = lambda_opt_teo
+lambda_mppt = lam_opt_ctrl
+
+if abs(lambda_mppt - lambda_opt_teo) > 0.05:
+    st.warning(
+        f"λ_control ({lambda_mppt:.2f}) difiere del λ óptimo aerodinámico estimado ({lambda_opt_teo:.2f}). "
+        "Operarás fuera de Cp_max a menos que alinees TSR de control y geometría."
+    )
 
 
 # Grid de vientos
@@ -1065,55 +1820,98 @@ else:
 P_gen_curve_W = interp_curve(rpm_gen, tab_power["rpm"].values, tab_power["P_kW"].values) * 1000.0
 V_LL_curve    = interp_curve(rpm_gen, tab_volt["rpm"].values,  tab_volt["V_LL"].values)
 
-# Modelo simplificado de generador:
-# P_el_gen = min(P_mec * η_gen_max, P_gen_curve)
-P_el_gen_W = np.minimum(P_mec_gen_W * eta_gen_max, P_gen_curve_W)
+# Torques: cargas aero vs eje generador
+T_rotor_Nm = np.divide(P_aero_W, np.maximum(omega_rot, 1e-6))
+T_gen_raw  = np.divide(P_mec_gen_W, np.maximum(omega_gen, 1e-6))
 
-# Eficiencia instantánea del generador (para info)
+# Fuerza centrípeta / aceleración radial por pala en cada bin
+F_centripetal_series = m_blade * R * (omega_rot ** 2)
+g_per_blade_series = np.divide(
+    F_centripetal_series,
+    max(m_blade * 9.81, 1e-3),
+    out=np.zeros_like(F_centripetal_series),
+    where=(m_blade > 0)
+)
+M_root_series_Nm = np.divide(T_rotor_Nm, max(N, 1)) + F_centripetal_series * lever_arm_pala
+M_strut_series_Nm = np.divide(M_root_series_Nm, max(struts_per_blade, 1))
+
+# Tensiones aproximadas en raíz y struts (usa parámetros estructurales del panel)
+W_root = max(section_modulus_root, 1e-6)  # m^3
+sigma_root_MPa = (M_root_series_Nm / W_root) / 1e6
+allow_root_MPa = sigma_y_pala_mpa / max(safety_target, 1e-6)
+margin_root = np.divide(
+    (allow_root_MPa - sigma_root_MPa),
+    max(allow_root_MPa, 1e-6),
+    out=np.zeros_like(sigma_root_MPa),
+    where=np.isfinite(sigma_root_MPa),
+)
+
+strut_area_m2 = max(strut_area_cm2 * 1e-4, 1e-9)
+F_strut_series_N = np.divide(M_strut_series_Nm, max(lever_arm_pala, 1e-3))
+sigma_strut_MPa = (F_strut_series_N / strut_area_m2) / 1e6
+allow_strut_MPa = sigma_allow_strut_mpa / max(safety_target, 1e-6)
+margin_strut = np.divide(
+    (allow_strut_MPa - sigma_strut_MPa),
+    max(allow_strut_MPa, 1e-6),
+    out=np.zeros_like(sigma_strut_MPa),
+    where=np.isfinite(sigma_strut_MPa),
+)
+
+if T_gen_max > 0:
+    T_gen_Nm = np.minimum(T_gen_raw, T_gen_max)
+else:
+    T_gen_Nm = T_gen_raw
+
+# Potencia mecánica que realmente puede transmitir el eje rápido tras limitar par
+P_mec_to_gen_W = np.minimum(P_mec_gen_W, T_gen_Nm * omega_gen)
+
+# Retroalimentar límite al resto de etapas
+P_el_gen_W = np.minimum(P_mec_to_gen_W * eta_gen_max, P_gen_curve_W)
+P_el_ac    = P_el_gen_W * eta_elec
+P_el_ac_clip = np.minimum(P_el_ac, P_nom_kW * 1000.0)
+
+# Eficiencia instantánea del generador (considerando límite de par)
 eta_gen_curve = np.divide(
     P_el_gen_W,
-    np.maximum(P_mec_gen_W, 1.0),
+    np.maximum(P_mec_to_gen_W, 1.0),
     out=np.zeros_like(P_el_gen_W),
-    where=(P_mec_gen_W > 0)
+    where=(P_mec_to_gen_W > 0)
 )
 eta_gen_curve = np.clip(eta_gen_curve, 0.0, eta_gen_max)
 
-# Potencia eléctrica después de electrónica
-P_el_ac = P_el_gen_W * eta_elec
-
-# Clipping por potencia nominal
-P_el_ac_clip = np.minimum(P_el_ac, P_nom_kW * 1000.0)
-
-# Torques
-T_rotor_Nm = np.divide(P_aero_W, np.maximum(omega_rot, 1e-6))
-T_gen_Nm   = T_rotor_Nm / np.maximum(G, 1e-9)
-
-# Límite por T_gen_max
-if T_gen_max > 0:
-    T_gen_allowed = np.minimum(T_gen_Nm, T_gen_max)
-    P_limit_by_T  = T_gen_allowed * omega_gen
-    P_el_ac_clip  = np.minimum(P_el_ac_clip, P_limit_by_T)
 
 # Frecuencia eléctrica
 p_pairs = poles_total / 2.0
 f_e_Hz  = p_pairs * rpm_gen / 60.0
 
-PF = 0.95
+PF = pf_setpoint
 
-# Corriente estimada: limpiando zona de muy baja tensión
+# Corriente estimada en bornes del generador (antes de electrónica/clipping)
 V_eff = np.maximum(V_LL_curve, 1.0)
-I_A = np.where(
+P_for_I = P_el_gen_W.copy()
+I_from_power = np.where(
     V_LL_curve < 10.0,
     0.0,
     np.divide(
-        P_el_ac_clip,
+        P_for_I,
         np.sqrt(3) * V_eff * PF,
-        out=np.zeros_like(P_el_ac_clip),
-        where=(P_el_ac_clip > 0)
+        out=np.zeros_like(P_for_I),
+        where=(P_for_I > 0)
     )
 )
+Kt_safe = max(float(Kt_nm_per_A), 1e-6)
+I_from_torque = T_gen_Nm / Kt_safe
+I_A = np.maximum(I_from_power, I_from_torque)
+max_I_inv = float(np.nanmax(I_A)) if I_A.size else 0.0
 
 V_LL_from_Ke = Ke_vsr_default * omega_gen
+dc_link_capacity_W = max(V_dc_nom * I_dc_nom, 1e3)
+dc_util_series = np.divide(
+    P_el_gen_W,
+    dc_link_capacity_W,
+    out=np.zeros_like(P_el_gen_W),
+    where=(dc_link_capacity_W > 0)
+)
 
 # Cp equivalente por etapa
 P_out_W = P_el_ac_clip
@@ -1123,7 +1921,7 @@ Cp_aero = np.divide(
     out=np.zeros_like(v_grid), where=(v_grid > 0)
 )
 Cp_shaft = np.divide(
-    P_mec_gen_W,
+    P_mec_to_gen_W,
     0.5 * rho * A * (v_grid ** 3),
     out=np.zeros_like(v_grid), where=(v_grid > 0)
 )
@@ -1133,10 +1931,11 @@ Cp_el = np.divide(
     out=np.zeros_like(v_grid), where=(v_grid > 0)
 )
 
-# Reynolds en pala (aprox. con U_tip)
+# Reynolds en pala (aprox. con velocidad relativa local)
+U_rel = np.sqrt((lambda_eff * v_grid) ** 2 + v_grid ** 2)   # componente tangencial + flujo incident
 Re_mid = np.zeros_like(v_grid)
 if mu > 0:
-    Re_mid = rho * U_tip * c / mu
+    Re_mid = rho * U_rel * c / mu
 
 # Ruido aeroacústico
 Lw_dB = np.full_like(v_grid, np.nan, dtype=float)
@@ -1190,17 +1989,26 @@ df = pd.DataFrame({
     "f_3P (Hz)":         np.round(f_3P, 2),
     "T_rotor (N·m)":     np.round(T_rotor_Nm, 0),
     "T_gen (N·m)":       np.round(T_gen_Nm, 0),
+    "F_cen/pala (kN)":   np.round(F_centripetal_series / 1000.0, 2),
+    "a_cen (g)":         np.round(g_per_blade_series, 2),
+    "M_base (kN·m)":     np.round(M_root_series_Nm / 1000.0, 2),
+    "M_por_strut (kN·m)": np.round(M_strut_series_Nm / 1000.0, 2),
+    "sigma_root (MPa)":  np.round(sigma_root_MPa, 2),
+    "sigma_strut (MPa)": np.round(sigma_strut_MPa, 2),
+    "margen_root (%)":   np.round(margin_root * 100.0, 1),
+    "margen_strut (%)":  np.round(margin_strut * 100.0, 1),
     "P_el (kW)":         np.round(P_el_ac / 1000.0, 2),
     "P_out (clip) kW":   np.round(P_el_ac_clip / 1000.0, 2),
     "I_est (A)":         np.round(I_A, 1),
+    "Duty_DC (%)":       np.round(dc_util_series * 100.0, 1),
     "Lw (dB)":           np.round(Lw_dB, 1),
     "Lp_obs (dB)":       np.round(Lp_dB, 1),
 })
 # =========================
 # PÉRDIDAS POR ETAPA [W]
 # =========================
-P_loss_mec_W  = np.maximum(P_aero_W    - P_mec_gen_W, 0.0)
-P_loss_gen_W  = np.maximum(P_mec_gen_W - P_el_gen_W,  0.0)
+P_loss_mec_W  = np.maximum(P_aero_W    - P_mec_to_gen_W, 0.0)
+P_loss_gen_W  = np.maximum(P_mec_to_gen_W - P_el_gen_W,  0.0)
 P_loss_elec_W = np.maximum(P_el_gen_W  - P_el_ac,     0.0)
 P_loss_clip_W = np.maximum(P_el_ac     - P_el_ac_clip,0.0)
 
@@ -1282,11 +2090,14 @@ k_mppt      = T_rated / (omega_rated ** 2) if omega_rated > 0 else 0.0
 mass_total_blades = N * m_blade
 I_blades = N * m_blade * (R ** 2)
 F_centripetal_per_blade = m_blade * R * (omega_rated ** 2)
+g_per_blade_rated = (R * (omega_rated ** 2) / 9.81) if omega_rated > 0 else 0.0
+M_root_rated = (T_rated / max(N, 1)) + F_centripetal_per_blade * lever_arm_pala
+M_strut_rated = M_root_rated / max(struts_per_blade, 1)
 
 Re_8 = np.interp(8.0, v_grid, Re_mid) if (v_grid[0] <= 8.0 <= v_grid[-1]) else Re_mid[-1]
 Re_max = Re_mid[-1] if len(Re_mid) > 0 else 0.0
 
-st.markdown("## 📊 Panel técnico de KPIs")
+section_header("📊 Panel técnico de KPIs")
 
 tab_pala, tab_rotor, tab_tren = st.tabs(
     ["Pala & cargas inerciales", "Rotor & aerodinámica", "Tren de potencia"]
@@ -1367,13 +2178,23 @@ with tab_pala:
     with p5:
         kpi_card("Inercia palas I ≈ N·m·R²", f"{I_blades:,.0f} kg·m²", "Respuesta dinámica del rotor")
     with p6:
-        kpi_card("F CEN. / PALA ≈ m·R·w²", f"{F_centripetal_per_blade/1000:.1f} kN", "Esfuerzo radial en raíz de pala (m: masa; R: radio; ω: velocidad angular)",)
+        kpi_card(
+            "F CEN. / PALA ≈ m·R·ω²",
+            f"{F_centripetal_per_blade/1000:.1f} kN",
+            f"≈ {g_per_blade_rated:.1f} g @ rpm_rated"
+        )
 
-    p7, p8 = st.columns(2)
+    p7, p8, p9 = st.columns(3)
     with p7:
         kpi_card("Re @ 8 m/s ≈ (ρ·U_tip·c)/u",f"{Re_8:,.0f}", "Régimen aerodinámico de diseño (ρ: densidad; U_tip: punta; c: cuerda; μ: viscosidad)",)
     with p8:
         kpi_card("Re @ v_max ≈ (ρ·U_tip,max·c)/u",f"{Re_max:,.0f}","Régimen aerodinámico límite operativo para alta velocidad",)
+    with p9:
+        kpi_card(
+            "M_base ≈ T/N + F·L",
+            f"{M_root_rated/1000:.1f} kN·m",
+            f"~{M_strut_rated/1000:.1f} kN·m/strut (n={int(struts_per_blade)})"
+        )
 
     st.caption(
         "Las propiedades de la pala permiten evaluar esfuerzos en uniones, ejes y rodamientos, "
@@ -1381,7 +2202,19 @@ with tab_pala:
     )
 st.markdown('</div>', unsafe_allow_html=True)
 
-# =========================================================
+
+# Especificaciones a revisar
+st.markdown(f"""
+<div class="comment-box">
+  <div class="comment-title">📐 Especificaciones bajo revisión</div>
+  <p>
+    D = {D:.1f} m, H = {H:.1f} m, N = {int(N)}, cuerda = {c:.2f} m, TSR objetivo = {tsr:.2f},
+    relación G = {G:.2f}, η_mec ≈ {eta_mec:.3f}, η_elec ≈ {eta_elec:.3f}. Usa estos valores como referencia al analizar cada gráfico.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+
 # Tabla de resultados + filtro tipo píldoras
 # =========================================================
 
@@ -1389,7 +2222,9 @@ modulos_columnas = {
     "Rotor (aero + dinámica)": [
         "v (m/s)", "λ_efectiva", "U_tip (m/s)",
         "Re (mid-span)", "Cp(λ_efectiva)", "Cp_aero_equiv",
-        "rpm_rotor", "T_rotor (N·m)", "f_1P (Hz)", "f_3P (Hz)"
+        "rpm_rotor", "T_rotor (N·m)", "F_cen/pala (kN)", "a_cen (g)", "M_base (kN·m)", "M_por_strut (kN·m)",
+        "sigma_root (MPa)", "sigma_strut (MPa)", "margen_root (%)", "margen_strut (%)",
+        "f_1P (Hz)", "f_3P (Hz)"
     ],
     "Tren mecánico": [
         "v (m/s)", "P_aero (kW)", "P_mec_gen (kW)",
@@ -1399,7 +2234,7 @@ modulos_columnas = {
         "v (m/s)", "rpm_gen", "P_gen_curve (kW)",
         "V_LL (V)", "V_LL (Ke) [V]", "f_e (Hz)",
         "η_gen (curve)", "T_gen (N·m)",
-        "P_el (kW)", "P_out (clip) kW", "I_est (A)",
+        "P_el (kW)", "P_out (clip) kW", "I_est (A)", "Duty_DC (%)",
         "Cp_el_equiv"
     ],
     "Ruido": [
@@ -1508,10 +2343,60 @@ div[data-testid="stDataFrame"] div[aria-colindex="0"][data-testid="cell"]:hover 
 </style>
 """, unsafe_allow_html=True)
 
-
 # ---------- TÍTULO + SELECTOR ----------
 st.subheader("📊 Tabla de resultados por viento")
-st.markdown("### Ver módulo")
+question_prompt("¿Qué rango de viento revela discrepancias entre variables aero, mecánicas y eléctricas que debamos priorizar en las siguientes simulaciones?")
+
+# ---------- KPIs rápidos ----------
+df_range = df.copy()
+
+range_kpis = [
+    {
+        "label": "λ promedio (rango)",
+        "value": float(df_range["λ_efectiva"].mean()) if not df_range.empty else np.nan,
+        "fmt": lambda v: f"{v:.2f}",
+        "sub": "TSR efectiva media del intervalo."
+    },
+    {
+        "label": "P_out máx [kW]",
+        "value": float(df_range["P_out (clip) kW"].max()) if not df_range.empty else np.nan,
+        "fmt": lambda v: f"{v:.1f}",
+        "sub": "Potencia eléctrica máxima disponible."
+    },
+    {
+        "label": "I_est máx [A]",
+        "value": float(df_range["I_est (A)"].max()) if not df_range.empty else np.nan,
+        "fmt": lambda v: f"{v:.1f}",
+        "sub": "Corriente trifásica estimada en el rango."
+    },
+    {
+        "label": "Cp_el promedio",
+        "value": float(df_range["Cp_el_equiv"].mean()) if not df_range.empty else np.nan,
+        "fmt": lambda v: f"{v:.3f}",
+        "sub": "Eficiencia Cp eléctrica ponderada."
+    },
+    {
+        "label": "T_gen máx [N·m]",
+        "value": float(df_range["T_gen (N·m)"].max()) if not df_range.empty else np.nan,
+        "fmt": lambda v: f"{v:.0f}",
+        "sub": "Par máximo en el eje rápido."
+    },
+]
+
+col_kpis = st.columns(len(range_kpis))
+for col, card in zip(col_kpis, range_kpis):
+    val = card["value"]
+    value_text = card["fmt"](val) if np.isfinite(val) else "—"
+    col.markdown(
+        f"""
+        <div class="range-card">
+            <div class="range-card__label">{escape(card["label"])}</div>
+            <div class="range-card__value">{value_text}</div>
+            <div class="range-card__sub">{escape(card["sub"])}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 pill_labels = {
     "🟢 Todas": "Todas",
@@ -1535,307 +2420,383 @@ st.session_state["modulo_tabla"] = mod_sel
 
 # ---------- FILTRO DE COLUMNAS ----------
 if mod_sel == "Todas":
-    df_view = df
+    df_view = df_range
 else:
-    cols = [c for c in modulos_columnas.get(mod_sel, []) if c in df.columns]
-    df_view = df[cols] if cols else df
+    cols = [c for c in modulos_columnas.get(mod_sel, []) if c in df_range.columns]
+    df_view = df_range[cols] if cols else df_range
+
+# ---------- CLASIFICACIÓN REGIÓN IEC Y ESTILO ----------
+def region_tag(v):
+    if (v_cut_in is not None) and v < v_cut_in:
+        return "Pre cut-in"
+    if (v_cut_in is not None) and (v_rated is not None) and (v_cut_in <= v < v_rated):
+        return "MPPT"
+    if (v_rated is not None) and (v_cut_out is not None) and (v_rated <= v <= v_cut_out):
+        return "Potencia limitada"
+    if (v_cut_out is not None) and v > v_cut_out:
+        return "Sobre cut-out"
+    return "Sin clasificar"
+
+region_colors = {
+    "Pre cut-in": "rgba(148,163,184,0.08)",
+    "MPPT": "rgba(34,197,94,0.10)",
+    "Potencia limitada": "rgba(234,179,8,0.12)",
+    "Sobre cut-out": "rgba(239,68,68,0.12)",
+}
+
+if not df_view.empty:
+    df_view = df_view.copy()
+    df_view["Región IEC"] = df_view["v (m/s)"].apply(region_tag)
+    numeric_cols = df_view.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) > 0:
+        df_view[numeric_cols] = df_view[numeric_cols].round(2)
+
+def highlight_region(row):
+    color = region_colors.get(row.get("Región IEC"), "transparent")
+    return [f"background-color: {color}"] * len(row)
+
+if not df_view.empty:
+    style_obj = df_view.style.apply(highlight_region, axis=1)
+    numeric_cols = df_view.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) > 0:
+        style_obj = style_obj.format({col: "{:.2f}" for col in numeric_cols})
+    df_to_render = style_obj
+else:
+    df_to_render = df_view
 
 # ---------- TABLA + DESCARGA ----------
-st.dataframe(
-    df_view,
-    use_container_width=True,
-    height=480,
-    column_config={
+column_config_map = {
 
         "v (m/s)": st.column_config.NumberColumn(
             "v (m/s)",
             help=(
-                "Descripción: Velocidad del viento incidente sobre el rotor.\n"
-                "Fórmula: — (dato de entrada / SCADA / Weibull).\n"
-                "Parámetros: v = velocidad del viento [m/s]."
+                "**Descripción:** velocidad del viento usada como eje base.\n"
+                "**Origen:** simulación Weibull o datos SCADA.\n"
+                "**Uso:** limita el rango visible con el slider superior (no recalcula la física)."
             )
         ),
-
         "rpm_rotor": st.column_config.NumberColumn(
             "rpm_rotor",
             help=(
-                "Descripción: Velocidad de giro del rotor según la ley de control MPPT.\n"
-                "Fórmulas:\n"
-                "• Región 2 (MPPT): rpm_rotor = (30 / (π · R)) · λ_ctrl · v.\n"
-                "• Región 3 (nominal): rpm_rotor = rpm_rotor_rated (constante).\n"
-                "Parámetros:\n"
-                "• λ_ctrl = TSR objetivo definido en el panel de control.\n"
-                "• R = radio del rotor [m].\n"
-                "• v = velocidad del viento [m/s].\n"
-                "• rpm_rotor_rated = velocidad nominal fija del rotor."
+                "**Descripción:** rpm del rotor bajo control MPPT.\n"
+                "**Fórmula:** Región 2 → (30/πR)·λ_ctrl·v. Región 3 → rpm_rotor_rated.\n"
+                "**Control:** λ_ctrl se edita con el slider ‘TSR objetivo’; rpm_rotor_rated proviene de v_rated."
             )
         ),
-
         "rpm_gen": st.column_config.NumberColumn(
             "rpm_gen",
             help=(
-                "Descripción: Velocidad de giro del generador resultante del control MPPT.\n"
-                "Fórmula: rpm_gen = rpm_rotor · G.\n"
-                "Parámetros:\n"
-                "• rpm_rotor = velocidad del rotor (MPPT en Región 2, fija en Región 3).\n"
-                "• G = relación de transmisión rpm_gen/rpm_rotor."
+                "**Descripción:** rpm del generador después de la caja.\n"
+                "**Fórmula:** rpm_gen = rpm_rotor · G.\n"
+                "**Parámetros:** G (calculado o manual en ‘Tren de potencia’). Cambia al mover TSR o G."
             )
         ),
-
         "λ_efectiva": st.column_config.NumberColumn(
             "λ_efectiva",
             help=(
-                "Descripción: TSR efectiva del rotor.\n"
-                "Fórmula general: λ_efectiva = ω_rot · R / v.\n"
-                "Notas:\n"
-                "• En Región 2: λ_efectiva ≈ λ_ctrl (MPPT mantiene TSR constante).\n"
-                "• En Región 3: λ_efectiva baja al mantenerse rpm_rotor constante.\n"
-                "Parámetros:\n"
-                "• ω_rot = 2π · rpm_rotor / 60.\n"
-                "• R = radio del rotor [m].\n"
-                "• v = velocidad del viento [m/s].\n"
-                "• λ_ctrl = TSR objetivo del panel (control MPPT)."
+                "**Descripción:** TSR que realmente alcanza el rotor.\n"
+                "**Fórmula:** λ = ω_rot·R / v = U_tip / v.\n"
+                "**Nota:** ≈ λ_ctrl en MPPT; cae en Región 3 al congelar rpm_rotor."
             )
         ),
-
         "U_tip (m/s)": st.column_config.NumberColumn(
             "U_tip (m/s)",
             help=(
-                "Descripción: Velocidad de punta de pala.\n"
-                "Fórmula: U_tip = λ_efectiva · v.\n"
-                "Parámetros: λ_efectiva = TSR efectiva, v = velocidad del viento [m/s]."
+                "**Descripción:** velocidad de punta (criterio acústico/estructural).\n"
+                "**Fórmula:** U_tip = λ_efectiva · v.\n"
+                "**Observa:** responde al slider TSR y al rango de viento."
             )
         ),
-
         "Cp(λ_efectiva)": st.column_config.NumberColumn(
             "Cp(λ_efectiva)",
             help=(
-                "Descripción: Coeficiente de potencia aerodinámico del rotor en λ_efectiva.\n"
-                "Fórmula: Cp(λ) ≈ c_max · (λ/λ_opt) · exp(1 − λ/λ_opt) (modelo Cp(λ)).\n"
-                "Parámetros: c_max = Cp máximo, λ_opt = TSR óptimo, λ = λ_efectiva."
+                "**Descripción:** Cp teórico evaluado en la TSR efectiva.\n"
+                "**Modelo:** curva Cp(λ) definida por el perfil seleccionado.\n"
+                "**Uso:** identifica desviaciones del MPPT antes de pérdidas mecánicas."
             )
         ),
-
         "Cp_aero_equiv": st.column_config.NumberColumn(
             "Cp_aero_equiv",
             help=(
-                "Descripción: Cp equivalente de la potencia aerodinámica.\n"
-                "Fórmula: Cp_aero = P_aero / (0.5 · ρ · A · v³).\n"
-                "Parámetros: P_aero = potencia aerodinámica [W], ρ = densidad del aire [kg/m³], "
-                "A = área barrida D·H [m²], v = velocidad del viento [m/s]."
+                "**Descripción:** Cp práctico a la salida del rotor.\n"
+                "**Fórmula:** Cp = P_aero /(½·ρ·A·v³).\n"
+                "**Inputs:** ρ y geometría (D·H) configurados en el sidebar."
             )
         ),
-
         "Cp_shaft_equiv": st.column_config.NumberColumn(
             "Cp_shaft_equiv",
             help=(
-                "Descripción: Cp equivalente en el eje del generador (tras pérdidas mecánicas).\n"
-                "Fórmula: Cp_shaft = P_mec_gen / (0.5 · ρ · A · v³).\n"
-                "Parámetros: P_mec_gen = potencia mecánica en eje del generador [W], ρ, A, v como antes."
+                "**Descripción:** Cp después de rodamientos+caja (llega al eje rápido).\n"
+                "**Fórmula:** Cp_shaft = P_mec_gen /(½·ρ·A·v³)."
             )
         ),
-
         "Cp_el_equiv": st.column_config.NumberColumn(
             "Cp_el_equiv",
             help=(
-                "Descripción: Cp equivalente eléctrico tras todas las pérdidas hasta entrega AC (salida útil).\n"
-                "Fórmula: Cp_el = P_out / (0.5 · ρ · A · v³).\n"
-                "Parámetros: P_out = potencia eléctrica útil con clipping [W], ρ = densidad, A = D·H, v = viento."
+                "**Descripción:** Cp a la salida eléctrica útil (tras electrónica+clipping).\n"
+                "**Fórmula:** Cp_el = P_out /(½·ρ·A·v³)."
             )
         ),
-
         "Re (mid-span)": st.column_config.NumberColumn(
             "Re (mid-span)",
             help=(
-                "Descripción: Número de Reynolds en la sección media de la pala.\n"
-                "Fórmula: Re = ρ · U_tip · c / μ.\n"
-                "Parámetros: ρ = densidad del aire [kg/m³], U_tip = velocidad de punta [m/s], "
-                "c = cuerda de la pala [m], μ = viscosidad dinámica [Pa·s]."
+                "**Descripción:** Reynolds en la sección media de pala.\n"
+                "**Fórmula:** Re = ρ·U_tip·c / μ.\n"
+                "**Parámetros:** ρ, μ y cuerda se editan en el panel lateral."
             )
         ),
-
         "P_aero (kW)": st.column_config.NumberColumn(
             "P_aero (kW)",
             help=(
-                "Descripción: Potencia aerodinámica capturada por el rotor.\n"
-                "Fórmula: P_aero = 0.5 · ρ · A · v³ · Cp(λ_efectiva).\n"
-                "Parámetros: ρ, A, v, Cp(λ_efectiva) según modelo aerodinámico."
+                "**Descripción:** potencia aerodinámica capturada por el rotor.\n"
+                "**Fórmula:** ½·ρ·A·v³·Cp(λ_efectiva)."
             )
         ),
-
         "P_mec_gen (kW)": st.column_config.NumberColumn(
             "P_mec_gen (kW)",
             help=(
-                "Descripción: Potencia mecánica disponible en el eje del generador.\n"
-                "Fórmula: P_mec_gen = P_aero · η_mec.\n"
-                "Parámetros: P_aero = potencia aerodinámica [W], η_mec = η_rodamientos · η_caja."
+                "**Descripción:** potencia que llega al eje del generador.\n"
+                "**Fórmula:** P_mec = P_aero · η_mec (rodamientos · caja)."
             )
         ),
-
         "P_gen_curve (kW)": st.column_config.NumberColumn(
             "P_gen_curve (kW)",
             help=(
-                "Descripción: Potencia nominal del generador según su curva P(rpm).\n"
-                "Fórmula: P_gen_curve = interp_P(rpm_gen).\n"
-                "Parámetros: rpm_gen = velocidad del generador [rpm], curva P_kW(rpm) de datasheet/CSV."
+                "**Descripción:** potencia según la curva del generador (datasheet/CSV).\n"
+                "**Fórmula:** Interpolación P(rpm_gen).\n"
+                "**Uso:** valida si el MPPT exige más de lo que el generador puede entregar."
             )
         ),
-
         "η_gen (curve)": st.column_config.NumberColumn(
             "η_gen (curve)",
             help=(
-                "Descripción: Eficiencia instantánea del generador.\n"
-                "Fórmula: η_gen = P_el_gen / P_mec_gen.\n"
-                "Parámetros: P_el_gen = potencia eléctrica en bornes del generador [W], "
-                "P_mec_gen = potencia mecánica de entrada [W]."
+                "**Descripción:** eficiencia instantánea del generador.\n"
+                "**Fórmula:** η = P_el_gen / P_mec_gen.\n"
+                "**Referencia:** compara con η_gen_max configurada para detectar saturaciones."
             )
         ),
-
         "V_LL (V)": st.column_config.NumberColumn(
             "V_LL (V)",
             help=(
-                "Descripción: Tensión línea-línea del generador según curva nominal.\n"
-                "Fórmula: V_LL = interp_V(rpm_gen).\n"
-                "Parámetros: rpm_gen = velocidad del generador [rpm], curva V_LL(rpm) de datasheet/CSV."
+                "**Descripción:** tensión línea-línea tomada de la curva cargada.\n"
+                "**Fórmula:** V = interp_V(rpm_gen).\n"
+                "**Nota:** útil para verificar compatibilidad con la electrónica existente."
             )
         ),
-
         "V_LL (Ke) [V]": st.column_config.NumberColumn(
             "V_LL (Ke) [V]",
             help=(
-                "Descripción: Tensión línea-línea estimada usando la constante eléctrica Ke.\n"
-                "Fórmula: V_LL_Ke = Ke · ω_gen.\n"
-                "Parámetros: Ke = constante [V·s/rad], ω_gen = velocidad angular del generador [rad/s]."
+                "**Descripción:** estimación basada en la constante Ke del generador.\n"
+                "**Fórmula:** V = Ke · ω_gen.\n"
+                "**Uso:** comparar con la curva real (columna anterior) y detectar desvíos."
             )
         ),
-
         "f_e (Hz)": st.column_config.NumberColumn(
             "f_e (Hz)",
             help=(
-                "Descripción: Frecuencia eléctrica trifásica del generador.\n"
-                "Fórmula: f_e = (p/2) · (rpm_gen / 60).\n"
-                "Parámetros: p = número total de polos, rpm_gen = velocidad del generador [rpm]."
+                "**Descripción:** frecuencia eléctrica trifásica.\n"
+                "**Fórmula:** f = (poles/2)·rpm_gen/60.\n"
+                "**Parámetros:** número de polos definido en el panel ‘Tren de potencia’."
             )
         ),
-
         "f_1P (Hz)": st.column_config.NumberColumn(
             "f_1P (Hz)",
             help=(
-                "Descripción: Frecuencia de paso 1P del rotor (una vuelta completa).\n"
-                "Fórmula: f_1P = rpm_rotor / 60.\n"
-                "Parámetros: rpm_rotor = velocidad del rotor [rpm]."
+                "**Descripción:** frecuencia de paso del rotor (1 vuelta por segundo).\n"
+                "**Fórmula:** f_1P = rpm_rotor / 60.\n"
+                "**Uso:** comparar con modos estructurales y evitar resonancias."
             )
         ),
-
         "f_3P (Hz)": st.column_config.NumberColumn(
             "f_3P (Hz)",
             help=(
-                "Descripción: Frecuencia de paso 3P (paso de palas en rotor de 3 palas).\n"
-                "Fórmula: f_3P = 3 · f_1P.\n"
-                "Parámetros: f_1P = frecuencia de paso fundamental [Hz], N_pal = 3."
+                "**Descripción:** frecuencia 3P (una por pala en rotor de 3 palas).\n"
+                "**Fórmula:** f_3P = 3 · f_1P."
             )
         ),
-
         "T_rotor (N·m)": st.column_config.NumberColumn(
             "T_rotor (N·m)",
             help=(
-                "Descripción: Par aerodinámico en el eje del rotor.\n"
-                "Fórmula: T_rotor = P_aero / ω_rot.\n"
-                "Parámetros: P_aero = potencia aerodinámica [W], ω_rot = velocidad angular del rotor [rad/s]."
+                "**Descripción:** torque aerodinámico del eje lento.\n"
+                "**Fórmula:** T = P_aero / ω_rot.\n"
+                "**Nota:** revisa límites IEC configurados en el panel de diseño."
             )
         ),
-
         "T_gen (N·m)": st.column_config.NumberColumn(
             "T_gen (N·m)",
             help=(
-                "Descripción: Par transmitido al eje del generador.\n"
-                "Fórmula: T_gen = T_rotor / G.\n"
-                "Parámetros: T_rotor = par en el rotor [N·m], G = relación de transmisión."
+                "**Descripción:** torque visto por el generador.\n"
+                "**Fórmula:** T_gen = T_rotor / G.\n"
+                "**Control:** modifícalo cambiando G o la ley de par (TSR)."
             )
         ),
-
+        "F_cen/pala (kN)": st.column_config.NumberColumn(
+            "F_cen/pala (kN)",
+            help=(
+                "**Descripción:** fuerza centrípeta por pala para cada bin.\n"
+                "**Fórmula:** F = m_pala · R · ω².\n"
+                "**Uso:** comparar con límites estructurales de la raíz/struts."
+            )
+        ),
+        "a_cen (g)": st.column_config.NumberColumn(
+            "a_cen (g)",
+            help=(
+                "**Descripción:** aceleración radial equivalente en g.\n"
+                "**Fórmula:** a = R·ω² / g.\n"
+                "**Referencia:** chequea contra el límite configurado en el panel IEC."
+            )
+        ),
+        "M_base (kN·m)": st.column_config.NumberColumn(
+            "M_base (kN·m)",
+            help=(
+                "**Descripción:** momento flector estimado en la raíz de cada pala.\n"
+                "**Fórmula:** M ≈ (T_rotor/N) + F_cen·brazo.\n"
+                "**Uso:** dimensionamiento de pala, struts y base de torre."
+            )
+        ),
+        "M_por_strut (kN·m)": st.column_config.NumberColumn(
+            "M_por_strut (kN·m)",
+            help=(
+                "**Descripción:** momento flector que recibe cada strut/brazo.\n"
+                "**Fórmula:** M_strut = M_base / Nº struts.\n"
+                "**Nota:** ajusta el parámetro ‘N° de struts por pala’ en el panel lateral."
+            )
+        ),
+        "sigma_root (MPa)": st.column_config.NumberColumn(
+            "sigma_root (MPa)",
+            help=(
+                "**Descripción:** tensión aproximada en la raíz de la pala.\n"
+                "**Fórmula:** σ = M_root / W_root.\n"
+                "**Inputs:** W_root y σ_y se editan en ‘Propiedades estructurales avanzadas’."
+            )
+        ),
+        "sigma_strut (MPa)": st.column_config.NumberColumn(
+            "sigma_strut (MPa)",
+            help=(
+                "**Descripción:** tensión axial estimada en struts.\n"
+                "**Fórmula:** σ = F_strut / A_strut, con F_strut ≈ M_strut / brazo.\n"
+                "**Inputs:** Área efectiva y brazo se editan en el panel lateral."
+            )
+        ),
+        "margen_root (%)": st.column_config.NumberColumn(
+            "margen_root (%)",
+            help=(
+                "**Descripción:** margen de seguridad en la raíz.\n"
+                "**Fórmula:** (σ_admisible/FS − σ_root) / (σ_admisible/FS).\n"
+                "**Criterio:** negativo indica sobreesfuerzo."
+            )
+        ),
+        "margen_strut (%)": st.column_config.NumberColumn(
+            "margen_strut (%)",
+            help=(
+                "**Descripción:** margen de seguridad en struts.\n"
+                "**Fórmula:** (σ_admisible/FS − σ_strut) / (σ_admisible/FS).\n"
+                "**Criterio:** negativo indica sobreesfuerzo."
+            )
+        ),
         "P_el (kW)": st.column_config.NumberColumn(
             "P_el (kW)",
             help=(
-                "Descripción: Potencia eléctrica AC antes del clipping (tras electrónica de potencia).\n"
-                "Fórmula: P_el = P_el_gen · η_elec.\n"
-                "Parámetros: P_el_gen = potencia eléctrica del generador [W], η_elec = eficiencia electrónica (rect+inv)."
+                "**Descripción:** potencia AC tras la electrónica (sin clipping nominal).\n"
+                "**Fórmula:** P_el = P_el_gen · η_elec.\n"
+                "**Parámetros:** η_elec se define en el panel (rectificador+inversor)."
             )
         ),
-
         "P_out (clip) kW": st.column_config.NumberColumn(
             "P_out (clip) kW",
             help=(
-                "Descripción: Potencia eléctrica útil limitada por la potencia nominal (clipping).\n"
-                "Fórmula: P_out = min(P_el, P_nom).\n"
-                "Parámetros: P_el = potencia eléctrica antes de clipping [W], P_nom = potencia nominal del sistema [W]."
+                "**Descripción:** potencia útil limitada por P_nom o inversor.\n"
+                "**Fórmula:** P_out = min(P_el, P_nom).\n"
+                "**Nota:** cambia al modificar P_nom en el panel lateral."
             )
         ),
-
         "I_est (A)": st.column_config.NumberColumn(
             "I_est (A)",
             help=(
-                "Descripción: Corriente trifásica estimada en bornes del generador/inversor.\n"
-                "Fórmula: I_est = P_out / (√3 · V_LL · PF).\n"
-                "Parámetros: P_out = potencia de salida [W], V_LL = tensión línea-línea [V], PF = factor de potencia (≈0.95)."
+                "**Descripción:** corriente trifásica antes de la electrónica/clipping.\n"
+                "**Fórmula:** I = max(P_el_gen /(√3·V_LL·PF), T_gen/Kt).\n"
+                "**Parámetros:** PF configurable; Kt proviene del panel del generador."
             )
         ),
-
+        "Duty_DC (%)": st.column_config.NumberColumn(
+            "Duty DC (%)",
+            help=(
+                "**Descripción:** utilización del bus DC estimada.\n"
+                "**Fórmula:** Duty = P_el_gen /(V_dc_nom · I_dc_nom).\n"
+                "**Uso:** intenta mantenerlo < 100% para evitar saturación térmica del bus."
+            )
+        ),
         "Lw (dB)": st.column_config.NumberColumn(
             "Lw (dB)",
             help=(
-                "Descripción: Nivel de potencia sonora de la turbina.\n"
-                "Fórmula: L_w = L_w_ref + 10 · n · log10(U_tip / U_tip_ref).\n"
-                "Parámetros: L_w_ref = nivel de referencia [dB], n = exponente, U_tip = velocidad de punta, "
-                "U_tip_ref = velocidad de referencia."
+                "**Descripción:** nivel de potencia sonora del rotor.\n"
+                "**Modelo:** Lw = Lw_ref + 10·n·log10(U_tip/U_tip_ref).\n"
+                "**Inputs:** Lw_ref y exponente n se definen en el expander de ruido."
             )
         ),
-
         "Lp_obs (dB)": st.column_config.NumberColumn(
             "Lp_obs (dB)",
             help=(
-                "Descripción: Nivel de presión sonora estimado en el punto del observador.\n"
-                "Fórmula: L_p = L_w − 20 · log10(r_obs) − 11.\n"
-                "Parámetros: L_w = nivel de potencia sonora [dB], r_obs = distancia al observador [m]."
+                "**Descripción:** nivel estimado en el receptor configurado.\n"
+                "**Fórmula:** Lp = Lw − 20·log10(r_obs) − 11.\n"
+                "**Supuesto:** propagación en campo libre a la distancia r_obs (panel de ruido)."
             )
         ),
-
         "P_loss_mec (kW)": st.column_config.NumberColumn(
             "P_loss_mec (kW)",
             help=(
-                "Descripción: Pérdidas mecánicas entre el rotor y el eje del generador.\n"
-                "Fórmula: P_loss_mec = P_aero − P_mec_gen.\n"
-                "Parámetros: P_aero = potencia aerodinámica [W], P_mec_gen = potencia mecánica en el eje [W]."
+                "**Descripción:** pérdidas entre rotor y eje rápido (rodamientos + caja).\n"
+                "**Cálculo:** P_loss_mec = P_aero − P_mec_gen.\n"
+                "**Acción:** reduce cargas o mejora la lubricación si esta banda domina."
             )
         ),
-
         "P_loss_gen (kW)": st.column_config.NumberColumn(
             "P_loss_gen (kW)",
             help=(
-                "Descripción: Pérdidas internas del generador eléctrico.\n"
-                "Fórmula: P_loss_gen = P_mec_gen − P_el_gen.\n"
-                "Parámetros: P_mec_gen = potencia mecánica [W], P_el_gen = potencia eléctrica generador [W]."
+                "**Descripción:** pérdidas internas del generador (cobre, hierro, ventilación).\n"
+                "**Cálculo:** P_loss_gen = P_mec_gen − P_el_gen."
             )
         ),
-
         "P_loss_elec (kW)": st.column_config.NumberColumn(
             "P_loss_elec (kW)",
             help=(
-                "Descripción: Pérdidas en electrónica de potencia (rectificador + inversor, etc.).\n"
-                "Fórmula: P_loss_elec = P_el_gen − P_el.\n"
-                "Parámetros: P_el_gen = potencia eléctrica del generador [W], P_el = potencia después de electrónica [W]."
+                "**Descripción:** pérdidas en electrónica de potencia.\n"
+                "**Cálculo:** P_loss_elec = P_el_gen − P_el.\n"
+                "**Nota:** depende de la η_elec escogida."
             )
         ),
-
         "P_loss_clip (kW)": st.column_config.NumberColumn(
             "P_loss_clip (kW)",
             help=(
-                "Descripción: Potencia recortada por clipping al alcanzar el límite nominal.\n"
-                "Fórmula: P_loss_clip = P_el − P_out.\n"
-                "Parámetros: P_el = potencia eléctrica antes de clipping [W], P_out = potencia útil tras clipping [W]."
+                "**Descripción:** energía recortada por límites nominales.\n"
+                "**Cálculo:** max(0, P_el − P_out).\n"
+                "**Sugerencia:** si domina temprano, aumenta P_nom o ajusta TSR/MPPT."
             )
         ),
-    },
+        "Región IEC": st.column_config.Column(
+            "Región IEC",
+            help=(
+                "**Descripción:** etiqueta IEC automática del bin de viento.\n"
+                f"• Pre cut-in: v < v_cut-in ({v_cut_in:.1f} m/s)\n"
+                f"• MPPT: {v_cut_in:.1f} ≤ v < v_rated ({v_rated:.1f} m/s)\n"
+                f"• Potencia limitada: {v_rated:.1f} ≤ v ≤ v_cut-out ({v_cut_out:.1f} m/s)\n"
+                f"• Sobre cut-out: v > v_cut-out ({v_cut_out:.1f} m/s)\n"
+                "**Nota:** cambia automáticamente si modificas v_cut-in/rated/cut-out en el sidebar."
+            ),
+            width="small",
+        ),
+    }
+
+visible_cols = list(df_view.columns) if hasattr(df_view, "columns") else []
+column_config_filtered = {
+    key: value for key, value in column_config_map.items() if key in visible_cols
+}
+
+st.dataframe(
+    df_to_render,
+    use_container_width=True,
+    height=480,
+    column_config=column_config_filtered,
 )
 
 
@@ -1850,50 +2811,7 @@ st.download_button(
     mime="text/csv",
     key="csv_tabla_resultados"
 )
-# --- Ficha técnica de columnas principales ---
-with st.expander("📘 Guía rápida – columnas clave de la tabla"):
-    st.markdown(
-        """
-<span class="formula-bullet"><b>λ_efectiva</b><br>
-<span class="formula-inline">
-Descripción: TSR efectiva del rotor (relación entre velocidad de punta y viento).<br>
-Fórmula: λ = ω<sub>rot</sub> · R / v<br>
-Parámetros: ω<sub>rot</sub> = 2π·rpm_rotor/60 [rad/s], R = radio del rotor [m], v = velocidad del viento [m/s].
-</span>
-</span>
 
-<br>
-
-<span class="formula-bullet"><b>Cp_el_equiv</b><br>
-<span class="formula-inline">
-Descripción: Cp equivalente eléctrico tras todas las pérdidas hasta la entrega AC (potencia útil).<br>
-Fórmula: Cp<sub>el</sub> = P_out / (0.5 · ρ · A · v³)<br>
-Parámetros: P_out = potencia eléctrica útil con clipping [W], ρ = densidad del aire [kg/m³], A = D·H [m²], v = viento [m/s].
-</span>
-</span>
-
-<br>
-
-<span class="formula-bullet"><b>P_out (clip) kW</b><br>
-<span class="formula-inline">
-Descripción: Potencia eléctrica de salida limitada por la potencia nominal del sistema.<br>
-Fórmula: P_out = min(P_el, P_nom)<br>
-Parámetros: P_el = potencia eléctrica antes de clipping [W], P_nom = potencia nominal [W].
-</span>
-</span>
-
-<br>
-
-<span class="formula-bullet"><b>Re (mid-span)</b><br>
-<span class="formula-inline">
-Descripción: Número de Reynolds en la sección media de la pala, asociado al régimen aerodinámico del perfil.<br>
-Fórmula: Re = ρ · U_tip · c / μ<br>
-Parámetros: ρ = densidad del aire [kg/m³], U_tip = velocidad de punta [m/s], c = cuerda [m], μ = viscosidad dinámica [Pa·s].
-</span>
-</span>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 # ====== DISEÑO PARA FÓRMULAS DE CADA COLUMNA ======
@@ -1917,10 +2835,203 @@ st.markdown(
 )
 
 
+# Bloque – Aerodinámica
+section_header("🌀 Aerodinámica y comportamiento del perfil")
+
+# =========================================================
+# Gráfico – Polar Lift–Drag del perfil seleccionado
+# =========================================================
+st.subheader("🌀 Polar Lift–Drag del perfil seleccionado")
+question_prompt("¿En qué intervalo de ángulos de ataque quieres operar la pala para equilibrar sustentación y arrastre según el perfil seleccionado?")
+
+df_polar = build_lift_drag_polar(t_rel=t_rel, symmetric=is_symmetric)
+
+fig_polar = make_subplots(specs=[[{"secondary_y": True}]])
+
+# Cl y Cd en eje izquierdo
+fig_polar.add_trace(
+    go.Scatter(
+        x=df_polar["alpha_deg"],
+        y=df_polar["Cl"],
+        mode="lines",
+        name="Cl(α)",
+    ),
+    secondary_y=False,
+)
+
+fig_polar.add_trace(
+    go.Scatter(
+        x=df_polar["alpha_deg"],
+        y=df_polar["Cd"],
+        mode="lines",
+        name="Cd(α)",
+    ),
+    secondary_y=False,
+)
+
+# Cl/Cd en eje derecho
+fig_polar.add_trace(
+    go.Scatter(
+        x=df_polar["alpha_deg"],
+        y=df_polar["ClCd"],
+        mode="lines",
+        name="Cl/Cd(α)",
+        line=dict(dash="dot"),
+    ),
+    secondary_y=True,
+)
+
+fig_polar.update_xaxes(
+    title_text="Ángulo de ataque α [°]",
+    zeroline=False,
+    showgrid=True,
+)
+
+fig_polar.update_yaxes(
+    title_text="Cl, Cd",
+    secondary_y=False,
+    showgrid=True,
+    gridcolor="rgba(148,163,184,0.35)",
+)
+fig_polar.update_yaxes(
+    title_text="Cl/Cd",
+    secondary_y=True,
+    showgrid=False,
+)
+
+fig_polar.update_layout(
+    legend_title="Magnitudes",
+    margin=dict(l=60, r=60, t=40, b=40),
+    hovermode="x unified",
+    hoverlabel=dict(
+        bgcolor="white",
+        font_size=12,
+        font_color="black",
+    ),
+    plot_bgcolor="white",
+)
+st.plotly_chart(fig_polar, use_container_width=True)
+
+# Comentario técnico
+st.markdown("""
+<div class="comment-box">
+  <div class="comment-title">✈️ Lectura rápida de la polar</div>
+  <p>
+  Este gráfico muestra la respuesta aerodinámica genérica del perfil seleccionado:
+  <ul>
+    <li><b>Cl(α)</b> crece casi linealmente hasta la zona de <em>stall</em>, donde comienza a saturarse.</li>
+    <li><b>Cd(α)</b> aumenta de forma cuadrática con Cl, reflejando el drag inducido y de perfil.</li>
+    <li><b>Cl/Cd(α)</b> indica la <strong>eficiencia aerodinámica</strong>; el máximo local se asocia al rango de ángulos
+        de ataque más conveniente para operación quasi-estacionaria del rotor.</li>
+  </ul>
+  En el contexto del VAWT, esta polar sirve como referencia para entender el rango de α en el que el perfil
+  trabaja durante el giro, y cómo cambios en espesor o tipo (simétrico/asimétrico) afectan sustentación y pérdidas.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# Gráfico – Ciclo de ángulo de ataque α(θ) y efecto del pitch
+# =========================================================
+st.subheader("🧭 Ciclo de ángulo de ataque α(θ) – efecto del pitch")
+question_prompt("¿Qué desplazamiento de pitch necesitas validar para mantener α dentro del sweet spot durante todo el ciclo azimutal?")
+
+theta_deg = np.linspace(0, 360, 721)  # 0.5° resolución
+lam_used = float(tsr)                 # TSR del panel (lam_opt_ctrl)
+
+# Variantes de pitch (centro en slider actual)
+pitch_variants = [
+    float(np.clip(pitch_deg - 2.0, -10.0, 10.0)),
+    float(np.clip(pitch_deg,       -10.0, 10.0)),
+    float(np.clip(pitch_deg + 2.0, -10.0, 10.0)),
+]
+
+# Sweet spot de referencia (puedes ajustarlo)
+alpha_opt_ref = 5.0
+alpha_band = 2.0  # ±2°
+
+fig_alpha = go.Figure()
+
+# Banda del sweet spot
+fig_alpha.add_hrect(
+    y0=alpha_opt_ref - alpha_band,
+    y1=alpha_opt_ref + alpha_band,
+    fillcolor="rgba(34,197,94,0.10)",
+    line_width=0,
+    layer="below",
+    annotation_text=f"Sweet spot ≈ {alpha_opt_ref:.0f}° ± {alpha_band:.0f}°",
+    annotation_position="top right",
+    annotation_yshift=12,
+)
+
+# Líneas α(θ) para cada pitch
+for p in pitch_variants:
+    alpha_deg = alpha_cycle_deg(theta_deg, lam=lam_used, pitch_deg=p)
+
+    # Métricas rápidas (opcionales)
+    a_min, a_max = float(alpha_deg.min()), float(alpha_deg.max())
+    a_mean = float(alpha_deg.mean())
+
+    fig_alpha.add_trace(
+        go.Scatter(
+            x=theta_deg,
+            y=alpha_deg,
+            mode="lines",
+            name=f"pitch = {p:+.1f}°  (min={a_min:.1f}, mean={a_mean:.1f}, max={a_max:.1f})",
+            hovertemplate="θ = %{x:.1f}°<br>α = %{y:.2f}°<extra></extra>",
+        )
+    )
+
+# Líneas guía
+fig_alpha.add_hline(
+    y=alpha_opt_ref,
+    line_dash="dot",
+    annotation_text="α_opt ref",
+    annotation_position="bottom right",
+    annotation_yshift=-12,
+)
+
+fig_alpha.update_xaxes(
+    title_text="Posición azimutal θ [°]",
+    range=[0, 360],
+    showgrid=True,
+)
+fig_alpha.update_yaxes(
+    title_text="Ángulo de ataque α [°]",
+    showgrid=True,
+    gridcolor="rgba(148,163,184,0.35)",
+    zeroline=False,
+)
+
+fig_alpha.update_layout(
+    margin=dict(l=60, r=20, t=40, b=40),
+    hovermode="x unified",
+    plot_bgcolor="white",
+    legend_title=f"TSR usado: λ = {lam_used:.2f}",
+)
+
+st.plotly_chart(fig_alpha, use_container_width=True)
+
+st.markdown("""
+<div class="comment-box">
+  <div class="comment-title">🔍 Interpretación</div>
+  <p>
+  Este gráfico muestra cómo el ángulo de ataque <b>α</b> varía durante una vuelta completa del rotor (θ).
+  Cambiar el <b>pitch</b> en ±2° desplaza toda la curva α(θ) hacia arriba o hacia abajo, sin cambiar su forma.
+  La banda verde marca un rango de referencia para un “sweet spot” aerodinámico alrededor de α≈5°.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# Bloque – Operación y control
+section_header("⚙️ Operación y control del rotor")
+
 # =========================================================
 # Gráfico 1 – rpm rotor / rpm generador (ancho completo)
 # =========================================================
 st.subheader("⚙️ rpm rotor / rpm generador")
+question_prompt("¿Las transiciones entre regiones de control mantienen rpm_rotor y rpm_gen dentro de los límites que exige tu especificación de tren de potencia?")
 
 # Datos ordenados + región de operación
 df_rpm_plot = df.sort_values("v (m/s)").copy()
@@ -2067,12 +3178,14 @@ st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica</div>
   <p>
-  Este gráfico muestra simultáneamente el comportamiento del rotor y el generador bajo la ley de control por regiones.
-  Las líneas verticales indican los puntos de transición entre <em>cut-in</em>, operación MPPT y potencia nominal.
-  Las bandas sombreadas distinguen la región de <strong>seguimiento de λ (MPPT)</strong> y la región de
-  <strong>potencia limitada</strong>.
-  Las líneas horizontales de <strong>rpm_rated</strong> permiten verificar que la relación de transmisión
-  <strong>G</strong> lleva al generador a su régimen nominal sin sobrepasarlo.
+    Entre <em>v_cut-in</em> y <em>v_rated</em> la curva azul debe crecer linealmente; si alcanza
+    <strong>rpm_rotor_rated</strong> antes de <em>v_rated</em>, reduce la λ objetivo o la relación <strong>G</strong>
+    para evitar sobrevelocidad. Si queda por debajo, estás perdiendo Cp: sube ligeramente TSR o disminuye pérdidas mecánicas.
+  </p>
+  <p>
+    La curva naranja (generador) debe alcanzar <strong>rpm_gen_rated</strong> justo cuando inicia la región de potencia
+    limitada. Si la sobrepasa, limita el MPPT o baja G; si nunca llega, la caja está muy corta y el generador opera lejos
+    de su punto óptimo. Usa este gráfico para alinear control, multiplicadora y curva del generador.
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -2082,6 +3195,7 @@ st.markdown("""
 # Gráfico – λ_efectiva, U_tip y Frecuencia eléctrica
 # =========================================================
 st.subheader("🚀 λ_efectiva, U_tip y Frecuencia eléctrica")
+question_prompt("¿En qué punto la combinación de λ, U_tip y f_e empieza a chocar con restricciones acústicas o de electrónica que debamos ajustar?")
 
 df_u = df.sort_values("v (m/s)").copy()
 
@@ -2141,7 +3255,7 @@ if (v_rated is not None) and (v_cut_out is not None):
         annotation_position="top left",
         annotation_font_size=11,
         annotation_font_color="rgba(107,114,128,1)",
-    )
+)
 
 st.plotly_chart(fig_u, use_container_width=True)
 
@@ -2149,22 +3263,129 @@ st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica</div>
   <p>
-  Aquí se observa cómo varía el TSR efectivo (<strong>λ_efectiva</strong>), la velocidad de punta de pala
-  (<strong>U_tip</strong>) y la frecuencia eléctrica (<strong>f<sub>e</sub></strong>) con el viento.
-  Entre <em>v_cut-in</em> y <em>v_rated</em> el control mantiene <strong>λ</strong> cercano a
-  <strong>λ<sub>opt</sub></strong>, por lo que U_tip y f<sub>e</sub> crecen de forma controlada (región MPPT).
-  En la zona sombreada (entre <em>v_rated</em> y <em>v_cut-out</em>) se aprecia la operación a potencia limitada,
-  donde la velocidad del generador y la frecuencia tienden a estabilizarse, permitiendo verificar restricciones
-  de ruido, fatiga y compatibilidad con la electrónica de potencia.
+    Usa la curva de <strong>λ_efectiva</strong> para comprobar que en MPPT te mantienes dentro de la banda azul alrededor
+    de λ<sub>opt</sub>; si cae antes de <em>v_rated</em> es señal de que el control está entregando menos par del necesario
+    o de que la caja no sigue el setpoint.
+  </p>
+  <p>
+    <strong>U_tip</strong> y <strong>f<sub>e</sub></strong> marcan límites acústicos y eléctricos: si U_tip supera el valor
+    permitido antes de <em>v_rated</em>, reduce TSR o activa pitch para limitarla; si f<sub>e</sub> sale del rango de la
+    electrónica, reevalúa el número de polos o el setpoint de G. En Región 3 deberían aplanarse.
   </p>
 </div>
 """, unsafe_allow_html=True)
 
 
+# ==========================================================
+# Curva Cp(λ)
+# ==========================================================
+
+st.subheader("🧩 Cp(λ) – Promedio, upwind y downwind")
+question_prompt("¿Qué tan cerca quieres que el TSR objetivo permanezca del λ_opt estimado para cumplir la meta de Cp del proyecto?")
+
+df_cp = cp_curve_for_plot(cp_params)
+
+fig_cp = px.line(
+    df_cp,
+    x="λ",
+    y=["Cp_prom", "Cp_upwind", "Cp_downwind"],
+    markers=True,
+)
+
+fig_cp.update_layout(
+    xaxis_title="λ",
+    yaxis_title="Cp",
+    legend_title="Componente",
+    hovermode="x unified",           # 🔹 tooltip unificado en x
+    plot_bgcolor="white",
+    margin=dict(l=40, r=40, t=40, b=40),
+)
+
+# Fondo con solo líneas horizontales suaves
+fig_cp.update_xaxes(
+    showgrid=False,
+    zeroline=False,
+)
+fig_cp.update_yaxes(
+    showgrid=True,
+    gridcolor="rgba(148,163,184,0.35)",
+    zeroline=False,
+)
+
+lam_opt = float(cp_params["lam_opt"])
+CP_BETZ = 16.0 / 27.0
+
+# --- Línea vertical: TSR objetivo ---
+fig_cp.add_vline(
+    x=float(tsr),
+    line_dash="dot",
+    line_color="rgba(249,115,22,0.9)",  # naranja
+    annotation_text="TSR objetivo",
+    annotation_position="top left",
+    annotation_yshift=-60,
+)
+
+# --- Línea vertical: λ_opt del modelo ---
+fig_cp.add_vline(
+    x=lam_opt,
+    line_dash="dash",
+    line_color="rgba(34,197,94,0.9)",  # verde
+    annotation_text="λ_opt",
+    annotation_position="top right",
+)
+
+# --- Banda recomendada alrededor de λ_opt (banda MPPT) ---
+band_half = 0.20 * lam_opt  # ±20% de λ_opt
+x0_band = lam_opt - band_half
+x1_band = lam_opt + band_half
+
+fig_cp.add_vrect(
+    x0=x0_band,
+    x1=x1_band,
+    fillcolor="rgba(59,130,246,0.08)",
+    line_width=0,
+    layer="below",
+    annotation_text="Banda MPPT recomendada",
+    annotation_position="top",
+    annotation_yshift=16,
+)
+
+# --- Límite de Betz ---
+fig_cp.add_hline(
+    y=CP_BETZ,
+    line_dash="dot",
+    line_color="rgba(234,179,8,0.9)",
+    annotation_text="Límite de Betz (0,593)",
+    annotation_position="bottom right",
+)
+
+st.plotly_chart(fig_cp, use_container_width=True)
+
+st.markdown("""
+<div class="comment-box">
+  <div class="comment-title">🔍 Interpretación técnica</div>
+  <p>
+    El máximo de la curva promedio define el Cp alcanzable con la geometría actual; si tu TSR objetivo (línea naranja)
+    se separa más de ±0.2 de <strong>λ_opt</strong>, perderás más de 5 % de rendimiento incluso antes de considerar pérdidas
+    mecánicas, por lo que conviene alinear el control o modificar la solidez.
+  </p>
+  <p>
+    La diferencia entre las curvas upwind/downwind te dice cuánta energía estás perdiendo en la mitad lee: si la curva
+    downwind cae demasiado, considera añadir helicoidal, end-plates o ajustar pitch para balancear cargas y acercarte al
+    promedio. Opera siempre dentro de la banda azul para mantenerte a menos de 3 % del Cp máximo.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# Bloque – Potencia y eficiencia
+section_header("📈 Potencia y eficiencia global")
+
     # =====================================================================
 # POTENCIAS VS VIENTO – DOS MODOS
 # =====================================================================
 st.subheader("Potencia vs Viento")
+question_prompt("¿En qué intervalo de vientos necesitas verificar que P_out siga la curva nominal sin clipping excesivo?")
 
 # Selector tipo "pill" (horizontal) para el dominio de potencia
 dominio_pot = st.radio(
@@ -2284,22 +3505,14 @@ if dominio_pot == "Potencias vs viento (recomendada)":
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica</div>
   <p>
-    El gráfico muestra la evolución de <strong>P_aero</strong>,
-    <strong>P_mec_gen</strong> y <strong>P_out</strong> en función de la
-    velocidad del viento. En la región MPPT (entre <em>v_cut-in</em> y
-    <em>v_rated</em>) <strong>P_aero</strong> y <strong>P_mec_gen</strong>
-    crecen aproximadamente con <em>v³</em>, lo que indica un seguimiento correcto
-    del punto de máxima potencia y permite cuantificar las pérdidas mecánicas
-    entre rotor y eje del generador.
+    En Región 2, <strong>P_aero</strong> y <strong>P_mec_gen</strong> deberían crecer casi en paralelo;
+    si divergen más de unos kW, hay pérdidas mecánicas excesivas o el MPPT no mantiene λ constante.
+    Ajusta rodamientos/caja o recalibra el control hasta que la separación sea mínima.
   </p>
   <p>
-    A partir de <em>v_rated</em>, <strong>P_out</strong> se recorta y se
-    mantiene cercana a <em>P_nom</em> hasta <em>v_cut-out</em>, definiendo la
-    región de potencia limitada. La separación entre
-    <strong>P_aero</strong>, <strong>P_mec_gen</strong> y
-    <strong>P_out</strong> refleja las pérdidas aerodinámicas, mecánicas y
-    eléctricas del aerogenerador, y permite verificar que el control protege
-    al generador respetando su potencia nominal.
+    En Región 3 controla el gap entre <strong>P_out</strong> y <strong>P_nom</strong>: si el clipping aparece
+    muy antes de <em>v_rated</em>, la máquina está sobredimensionada o el generador limita demasiado pronto;
+    si nunca clippea, desaprovechas la capacidad del generador. Ajusta P_nom, G o la lógica de derating según el caso.
   </p>
 </div>
 """,
@@ -2420,6 +3633,7 @@ else:
 
 # Cp equivalente por etapa
 st.subheader("📉 Cp equivalente por etapa")
+question_prompt("¿Qué etapa del tren (rotor, eje o salida eléctrica) debería optimizarse primero según la caída de Cp que ves frente al viento?")
 
 # --- Cálculo de eficiencias locales a partir de los Cp equivalentes ---
 Cp_a = df["Cp_aero_equiv"].values
@@ -2527,35 +3741,19 @@ fig_cp_eq.update_layout(
         font_color="black",
     ),
 )
-
 st.plotly_chart(fig_cp_eq, use_container_width=True)
 st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica (Cp equivalente por etapa)</div>
   <p>
-    El gráfico muestra cómo evoluciona el <strong>Cp equivalente</strong> en cada etapa del sistema:
-    <strong>rotor (Cp_aero)</strong>, <strong>eje del generador (Cp_shaft)</strong> y
-    <strong>salida eléctrica (Cp_el)</strong>, en función de la velocidad del viento.
+    Usa la caída entre <strong>Cp_aero</strong>, <strong>Cp_shaft</strong> y <strong>Cp_el</strong> para decidir dónde actuar primero:
+    si <strong>Cp_aero</strong> cae antes de <em>v_rated</em>, el control MPPT está soltando TSR y conviene retocar el setpoint o subir la solidez;
+    si la brecha <strong>Cp_aero → Cp_shaft</strong> crece con el viento, revisa rodamientos y caja porque los pares pico están disparando pérdidas.
   </p>
   <p>
-    Entre <em>v_cut-in</em> y <em>v_rated</em> las tres curvas se mantienen casi planas: el control MPPT
-    mantiene la TSR cercana a <strong>λ_opt</strong>, por lo que el rotor opera cerca de su rendimiento máximo.
-    La separación casi constante entre <strong>Cp_aero</strong> y <strong>Cp_shaft</strong> refleja las
-    pérdidas mecánicas (rodamientos + caja), mientras que la diferencia entre <strong>Cp_shaft</strong> y
-    <strong>Cp_el</strong> cuantifica las pérdidas del generador y de la electrónica de potencia.
-  </p>
-  <p>
-    A partir de <em>v_rated</em>, en la región sombreada de <strong>potencia limitada</strong>, el
-    <strong>Cp_el</strong> cae de forma marcada: la potencia eléctrica se mantiene prácticamente constante
-    mientras la potencia disponible del viento sigue creciendo con <em>v³</em>, por lo que el rendimiento
-    global baja aunque el tren mecánico y el generador sigan siendo eficientes. El hecho de que
-    <strong>Cp_aero</strong> se mantenga bien por debajo del <strong>límite de Betz</strong> es coherente
-    con un VAWT realista, donde valores entorno al 40–50&nbsp;% de dicho límite son típicos.
-  </p>
-  <p>
-    En conjunto, este gráfico permite ver en qué rango de vientos el piloto convierte mejor la energía del
-    viento y en qué etapas (mecánica, generador, electrónica o <em>clipping</em>) se concentran las
-    pérdidas que alejan al sistema del máximo teórico.
+    En Región 3 la diferencia <strong>Cp_shaft → Cp_el</strong> revela si estás limitando por rendimiento del generador o por clipping electrónico:
+    una caída temprana implica sobredimensionar el generador o redistribuir P_nom; si la caída ocurre solo en la curva eléctrica, ajusta límites de inversor.
+    Mantén las tres curvas dentro de una pendiente gradual; cualquier quiebre te dice exactamente qué etapa no soporta el escalamiento del piloto.
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -2567,6 +3765,7 @@ st.markdown("""
 # PÉRDIDAS POR ETAPA (MECÁNICA, GENERADOR, ELECTRÓNICA, CLIPPING)
 # =========================================================
 st.subheader("🔍 Pérdidas por etapa (mecánica, generador, electrónica, clipping)")
+question_prompt("¿Qué componente quieres atacar primero para reducir pérdidas cuando pases de la región MPPT a la potencia limitada?")
 
 dfL = df.sort_values("v (m/s)").copy()
 
@@ -2635,7 +3834,6 @@ else:
             annotation_font_size=11,
             annotation_font_color="rgba(107,114,128,1)",
         )
-
     st.plotly_chart(fig_loss, use_container_width=True)
 
     # ===========================
@@ -2646,17 +3844,14 @@ else:
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica</div>
   <p>
-    El área apilada muestra cuánto se pierde en cada etapa del sistema
-    (rodamientos+caja, generador, electrónica y <em>clipping</em> por nominal/par)
-    en función del viento.
+    Prioriza la barra que más crece en la región sombreada: si las pérdidas mecánicas dominan antes de <em>v_rated</em>,
+    reduce cargas en rodamientos (menor G o mejores sellos); si el generador se dispara después, necesitas mejor
+    ventilación o un modelo con menor R<sub>s</sub>.
   </p>
   <p>
-    A bajas velocidades las pérdidas totales son reducidas; a partir de
-    <em>v_rated</em>, la región sombreada de potencia limitada evidencia cómo
-    aumentan principalmente las pérdidas del generador y el <em>clipping</em> para
-    mantener <em>P_nom</em>. Este gráfico permite priorizar dónde conviene actuar:
-    mejorar el tren mecánico, optimizar el diseño del generador o ajustar la
-    electrónica de potencia y la potencia nominal.
+    Cuando el área de <em>clipping</em> supera al resto ya no ganas nada subiendo Cp: toca subir P_nom o suavizar el perfil MPPT.
+    Mantén la contribución de cada banda por debajo del 10–15&nbsp;% de la potencia útil para asegurar que el piloto llegue
+    competitivo al escalado de 80 kW.
   </p>
 </div>
 """,
@@ -2664,9 +3859,323 @@ else:
     )
 
 # ==========================================================
+# Eficiencias por etapa
+# ==========================================================
+st.subheader("📈 Eficiencias: mecánica, generador y global")
+question_prompt("¿Cuál es la eficiencia mínima aceptable en cada etapa antes de considerar rediseño o cambio de proveedor?")
+
+# --- Vectores base (en W) ---
+v_axis      = v_grid                      # o df["v (m/s)"].values
+P_aero      = P_aero_W                    # Potencia aerodinámica
+P_mec       = P_mec_gen_W                 # Potencia mecánica en eje generador
+P_el_before = P_el_gen_W                  # Potencia eléctrica antes de electrónica
+P_out       = P_el_ac_clip                # Potencia de salida tras electrónica + clipping
+
+eta_mec_pct = 100 * np.divide(
+    P_mec, P_aero,
+    out=np.zeros_like(P_aero),
+    where=(P_aero > 0)
+)
+eta_gen_pct = 100 * np.divide(
+    P_el_before, P_mec,
+    out=np.zeros_like(P_mec),
+    where=(P_mec > 0)
+)
+eta_tot_pct = 100 * np.divide(
+    P_out, P_aero,
+    out=np.zeros_like(P_aero),
+    where=(P_aero > 0)
+)
+
+eff_df = pd.DataFrame({
+    "v (m/s)":      v_axis,
+    "η_mec [%]":   np.round(eta_mec_pct, 1),
+    "η_gen [%]":   np.round(eta_gen_pct, 1),
+    "η_total [%]": np.round(eta_tot_pct, 1),
+})
+
+figE = px.line(
+    eff_df,
+    x="v (m/s)",
+    y=["η_mec [%]", "η_gen [%]", "η_total [%]"],
+    markers=True,
+)
+
+# Estilo de trazas + hover
+figE.update_traces(
+    line=dict(width=2.4),
+    marker=dict(size=7),
+    hovertemplate=(
+        "v = %{x:.1f} m/s<br>"
+        "%{y:.1f} %<extra>%{fullData.name}</extra>"
+    ),
+)
+
+# Layout general + hover unificado
+figE.update_layout(
+    xaxis_title="v (m/s)",
+    yaxis_title="Eficiencia [%]",
+    legend_title="Etapa",
+    hovermode="x unified",         # 👈 cuadro único con las 3 eficiencias
+    plot_bgcolor="white",
+    margin=dict(l=50, r=20, t=40, b=40),
+    hoverlabel=dict(
+        bgcolor="white",
+        font_size=12,
+        font_color="black",
+    ),
+)
+
+# Fondo con solo grilla horizontal
+figE.update_xaxes(showgrid=False, zeroline=False)
+figE.update_yaxes(
+    showgrid=True,
+    gridcolor="rgba(148,163,184,0.35)",
+    zeroline=False,
+)
+
+# --- Líneas verticales: cut-in / rated / cut-out ---
+for x_val, label in [
+    (v_cut_in,  "v_cut-in"),
+    (v_rated,   "v_rated"),
+    (v_cut_out, "v_cut-out"),
+]:
+    figE.add_vline(
+        x=float(x_val),
+        line_dash="dot",
+        line_color="rgba(148,163,184,0.8)",
+        annotation_text=label,
+        annotation_position="top",
+        annotation_font_size=11,
+        annotation_font_color="rgba(107,114,128,1)",
+    )
+
+# --- Región sombreada: potencia limitada (IEC 61400-2 para <200 kW) ---
+figE.add_vrect(
+    x0=float(v_rated),
+    x1=float(v_cut_out),
+    fillcolor="rgba(148,163,184,0.10)",
+    line_width=0,
+    layer="below",
+    annotation_text="Región potencia constante / IEC 61400-2",
+    annotation_position="top right",
+    annotation_font_size=11,
+    annotation_font_color="rgba(107,114,128,1)",
+)
+st.plotly_chart(figE, use_container_width=True)
+
+st.markdown("""
+<div class="comment-box">
+  <div class="comment-title">🔍 Interpretación técnica</div>
+  <p>
+    Fija umbrales claros: <strong>η_mec</strong> &gt; 92&nbsp;% en la banda MPPT asegura que la caja soporta el par objetivo;
+    si cae más de 3 puntos frente a <strong>v_rated</strong>, alarga G o mejora lubricación.
+  </p>
+  <p>
+    Mantén <strong>η_gen</strong> plana en 94–97&nbsp;%; si encuentras un diente al entrar en Región 3 es síntoma de saturación del generador o desfase de PF.
+    <strong>η_total</strong> debe caer solo cuando active el clipping: si baja antes, revisa la cadena completa (TSR, pérdidas o electrónica).
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+st.caption(
+    "η_total = P_out / P_aero. Si la curva de 'Pérdida por clipping' domina desde cierta v, "
+    "estás en región de potencia constante; considera redimensionar G/TSR o estrategia de control."
+)
+
+
+# Bloque – Tren mecánico y cargas
+section_header("🛠️ Tren mecánico y cargas")
+
+# =========================================================
+# Gráfico – Momento flector en raíz de pala
+# =========================================================
+st.subheader("🧱 Momento flector en unión pala–struts")
+question_prompt("¿En qué bins el momento flector supera tu límite FEM y cómo influye el brazo efectivo o la masa de pala?")
+
+df_moment = df.sort_values("v (m/s)").copy()
+
+fig_mbase = go.Figure()
+fig_mbase.add_trace(
+    go.Scatter(
+        x=df_moment["v (m/s)"],
+        y=df_moment["M_base (kN·m)"],
+        mode="lines+markers",
+        name="M_base (kN·m)",
+        line=dict(width=2.8),
+        marker=dict(size=7),
+        hovertemplate="v = %{x:.1f} m/s<br>M_base = %{y:.1f} kN·m<extra></extra>",
+    )
+)
+
+if M_base_max_iec > 0:
+    fig_mbase.add_hline(
+        y=float(M_base_max_iec),
+        line_dash="dot",
+        line_color="rgba(239,68,68,0.9)",
+        annotation_text=f"Límite IEC = {M_base_max_iec:.0f} kN·m",
+        annotation_position="bottom right",
+    )
+
+fig_mbase.update_layout(
+    xaxis_title="v (m/s)",
+    yaxis_title="Momento flector raíz [kN·m]",
+    hovermode="x unified",
+    plot_bgcolor="white",
+    margin=dict(l=60, r=20, t=40, b=40),
+    legend_title="Magnitud",
+)
+fig_mbase.update_xaxes(showgrid=False, zeroline=False)
+fig_mbase.update_yaxes(
+    showgrid=True,
+    gridcolor="rgba(148,163,184,0.35)",
+    zeroline=False,
+)
+
+for x_val, label in [
+    (v_cut_in, "v_cut-in"),
+    (v_rated, "v_rated"),
+    (v_cut_out, "v_cut-out"),
+]:
+    fig_mbase.add_vline(
+        x=float(x_val),
+        line_dash="dot",
+        line_color="rgba(148,163,184,0.6)",
+        annotation_text=label,
+        annotation_position="top",
+        annotation_font_size=11,
+        annotation_font_color="rgba(107,114,128,1)",
+    )
+
+st.plotly_chart(fig_mbase, use_container_width=True)
+
+st.markdown("""
+<div class="comment-box">
+  <div class="comment-title">🔍 Lectura rápida (M_base)</div>
+  <p>
+    La curva muestra cómo el momento flector combinado (torque aerodinámico por pala + efecto centrífugo) escala con el viento.
+    Si cruza la línea IEC antes de <em>v_rated</em>, necesitas reducir masa, brazo efectivo o ajustar la ley de rpm para aliviar la raíz.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+# ==========================================================
+# Tensiones en struts (selector de gráficos)
+# ==========================================================
+st.subheader("🧩 Tensiones en struts")
+question_prompt("¿El área efectiva de strut aporta suficiente margen frente al esfuerzo axial estimado?")
+
+show_both_strut = st.checkbox("Mostrar ambos gráficos (tensión + margen)", value=True)
+
+fig_strut = go.Figure()
+fig_strut.add_trace(
+    go.Scatter(
+        x=v_grid,
+        y=sigma_strut_MPa,
+        mode="lines+markers",
+        name="σ_strut (MPa)",
+        hovertemplate="v = %{x:.1f} m/s<br>σ_strut = %{y:.1f} MPa<extra></extra>",
+    )
+)
+if allow_strut_MPa > 0:
+    fig_strut.add_hline(
+        y=float(allow_strut_MPa),
+        line_dash="dot",
+        line_color="rgba(239,68,68,0.9)",
+        annotation_text=f"σ_admisible/FS = {allow_strut_MPa:.1f} MPa",
+        annotation_position="top right",
+    )
+fig_strut.update_layout(
+    title="Tensión axial en struts vs viento",
+    xaxis_title="v (m/s)",
+    yaxis_title="σ_strut (MPa)",
+    hovermode="x unified",
+    plot_bgcolor="white",
+    margin=dict(l=50, r=20, t=50, b=40),
+)
+fig_strut.update_xaxes(showgrid=False, zeroline=False)
+fig_strut.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.35)", zeroline=False)
+for x_val, label in [
+    (v_cut_in, "v_cut-in"),
+    (v_rated, "v_rated"),
+    (v_cut_out, "v_cut-out"),
+]:
+    fig_strut.add_vline(
+        x=float(x_val),
+        line_dash="dot",
+        line_color="rgba(148,163,184,0.6)",
+        annotation_text=label,
+        annotation_position="top",
+        annotation_font_size=11,
+        annotation_font_color="rgba(107,114,128,1)",
+    )
+st.plotly_chart(fig_strut, use_container_width=True)
+
+if show_both_strut:
+    fig_strut_margin = go.Figure()
+    fig_strut_margin.add_trace(
+        go.Scatter(
+            x=v_grid,
+            y=margin_strut * 100.0,
+            mode="lines+markers",
+            name="Margen σ_strut (%)",
+            hovertemplate="v = %{x:.1f} m/s<br>margen = %{y:.1f}%<extra></extra>",
+        )
+    )
+    fig_strut_margin.add_hline(
+        y=0.0,
+        line_dash="dot",
+        line_color="rgba(239,68,68,0.9)",
+        annotation_text="Margen = 0%",
+        annotation_position="top right",
+    )
+    fig_strut_margin.update_layout(
+        title="Margen en struts vs viento",
+        xaxis_title="v (m/s)",
+        yaxis_title="Margen (%)",
+        hovermode="x unified",
+        plot_bgcolor="white",
+        margin=dict(l=50, r=20, t=50, b=40),
+    )
+    fig_strut_margin.update_xaxes(showgrid=False, zeroline=False)
+    fig_strut_margin.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.35)", zeroline=False)
+    for x_val, label in [
+        (v_cut_in, "v_cut-in"),
+        (v_rated, "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        fig_strut_margin.add_vline(
+            x=float(x_val),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.6)",
+            annotation_text=label,
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+    st.plotly_chart(fig_strut_margin, use_container_width=True)
+
+st.markdown(f"""
+<div class="comment-box">
+  <div class="comment-title">🔍 Interpretación técnica (struts)</div>
+  <p>
+    Si la curva de <strong>σ_strut</strong> supera la línea de admisible/FS antes de <em>v_rated</em>,
+    necesitas aumentar el área efectiva, reducir el brazo efectivo o bajar TSR para aliviar la carga.
+    Revisa el margen: valores negativos indican sobre-esfuerzo.
+  </p>
+  <p>
+    En Región 3 (potencia limitada) el control debería estabilizar la pendiente; si sigue creciendo rápido,
+    revisa la ley de rpm o el setpoint de par del generador.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ==========================================================
 # Torque (rotor y generador)
 # ==========================================================
 st.subheader("🧲 Torque (rotor y generador) ")
+question_prompt("¿En qué bin de viento el par se acerca más a tus límites estructurales IEC y requiere estrategias de mitigación?")
 
 # Datos importantes del generador (ficha técnica)
 T_gen_nom = GDG_RATED_T_Nm   # 3460 N·m
@@ -2800,164 +4309,18 @@ for x_val, label in [
     except Exception:
         # Si alguna no está definida, simplemente no se dibuja
         continue
-
 st.plotly_chart(figT, use_container_width=True)
 
 st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica (Par)</div>
   <p>
-    La curva <strong>T_rotor</strong> muestra el par disponible en el eje de la turbina, mientras que
-    <strong>T_gen</strong> representa el par efectivo en el eje del generador después de la caja multiplicadora.
-    La franja verde indica la zona de operación segura del generador (0–T<sub>nom</sub>), mientras que la zona
-    rojiza marca regímenes de <em>sobre-torque</em> que deberían ser transitorios o estar protegidos por el control.
+    Usa el cruce entre <strong>T_rotor</strong> y <strong>T_gen</strong> con las franjas verde/roja para definir tu política de protección:
+    si más del 5&nbsp;% del rango operativo cae en la zona roja, reduce la pendiente MPPT o baja G para descargar la caja.
   </p>
   <p>
-    La línea discontinua de <strong>T_nom gen</strong> (3460 N·m) y el límite
-    <strong>IEC T_rotor</strong> permiten verificar si, para el rango de vientos analizado, la estrategia de control
-    y la elección de la relación de transmisión <strong>G</strong> mantienen a la máquina dentro de un esfuerzo
-    mecánico admisible tanto en el rotor como en el generador, considerando además las velocidades
-    <strong>v_rated</strong>, <strong>v_cut-out</strong> y <strong>v_shutdown IEC</strong>.
-  </p>
-</div>
-""", unsafe_allow_html=True)
-
-# =========================================================
-# Módulo 3 – Alertas de diseño / operación (IEC-style)
-# =========================================================
-st.subheader("🚨 Alertas de diseño / operación")
-
-flags = []
-
-# Máximos de operación desde la simulación
-max_T_gen   = float(df["T_gen (N·m)"].max())
-max_T_rotor = float(df["T_rotor (N·m)"].max())
-max_I_est   = float(df["I_est (A)"].max())
-max_rpm_rot = float(df["rpm_rotor"].max())
-max_P_out   = float(df["P_out (clip) kW"].max())
-
-# 1) Torque generador vs nominal y vs T_gen_max de entrada
-#    (T_gen_nom viene de la ficha GDG-1100 más arriba)
-margen_Tgen_nom = 1.0
-if T_gen_nom > 0:
-    over_pct = (max_T_gen - T_gen_nom) / T_gen_nom * 100
-    if over_pct > 5:
-        flags.append(
-            f"⚠️ El par máximo en el generador ({max_T_gen:,.0f} N·m) "
-            f"supera el par nominal de ficha ({T_gen_nom:,.0f} N·m) "
-            f"en un {over_pct:,.0f} %.Revisa G, TSR objetivo o estrategia de control."
-        )
-
-
-# Límite adicional definido por usuario (T_gen_max)
-if T_gen_max > 0 and max_T_gen > 1.05 * T_gen_max:
-    flags.append(
-        f"⚠️ El par máximo en el generador ({max_T_gen:,.0f} N·m) excede el límite de diseño "
-        f"configurado T_gen_max = {T_gen_max:,.0f} N·m (IEC / criterio estructural)."
-    )
-
-# 2) Torque rotor vs límite IEC (T_rotor_max_iec)
-margen_Trot_iec = 1.0
-try:
-    if T_rotor_max_iec > 0:
-        margen_Trot_iec = (T_rotor_max_iec - max_T_rotor) / T_rotor_max_iec
-        if max_T_rotor > 1.02 * T_rotor_max_iec:
-            flags.append(
-                f"⚠️ El par máximo en el rotor ({max_T_rotor:,.0f} N·m) supera el límite IEC configurado "
-                f"T_rotor_max_iec = {T_rotor_max_iec:,.0f} N·m. Requiere revisión estructural."
-            )
-except NameError:
-    # Si por algún motivo no se definió en el sidebar
-    pass
-
-# 3) Corriente vs nominal del generador
-margen_I = 1.0
-if GDG_RATED_I > 0:
-    margen_I = (GDG_RATED_I - max_I_est) / GDG_RATED_I
-    if max_I_est > 1.05 * GDG_RATED_I:
-        flags.append(
-            f"⚠️ La corriente máxima estimada ({max_I_est:,.1f} A) supera en más de un 5% "
-            f"la corriente nominal de la máquina ({GDG_RATED_I:.1f} A). "
-            "Revisa el dimensionamiento de cables, protecciones y el setpoint de potencia."
-        )
-
-# 4) rpm rotor vs límite IEC
-margen_rpm = 1.0
-try:
-    if rpm_rotor_max_iec > 0:
-        margen_rpm = (rpm_rotor_max_iec - max_rpm_rot) / rpm_rotor_max_iec
-        if max_rpm_rot > 1.02 * rpm_rotor_max_iec:
-            flags.append(
-                f"⚠️ La rpm máxima del rotor ({max_rpm_rot:.1f} rpm) excede el límite IEC configurado "
-                f"rpm_rotor_max_iec = {rpm_rotor_max_iec:.1f} rpm. Ajusta el control de velocidad / shutdown."
-            )
-except NameError:
-    pass
-
-# 5) Potencia eléctrica vs nominal P_nom_kW
-margen_P = 1.0
-if P_nom_kW > 0:
-    margen_P = (P_nom_kW - max_P_out) / P_nom_kW
-    if max_P_out > 1.02 * P_nom_kW:
-        flags.append(
-            f"⚠️ La potencia máxima de salida ({max_P_out:.1f} kW) supera en más de un 2% "
-            f"la potencia nominal del sistema ({P_nom_kW:.1f} kW). Revisa el clipping y los límites del inversor."
-        )
-
-# Panel de márgenes de seguridad
-cA, cB, cC, cD = st.columns(4)
-
-def fmt_pct(m):
-    return f"{m*100:.1f} %" if np.isfinite(m) else "N/A"
-
-with cA:
-    st.metric(
-        "Margen T_gen vs T_nom",
-        fmt_pct(margen_Tgen_nom),
-        help="(T_nom - T_max) / T_nom. Valores negativos indican sobre-carga."
-    )
-with cB:
-    st.metric(
-        "Margen T_rotor vs IEC",
-        fmt_pct(margen_Trot_iec),
-        help="(T_rotor_max_iec - T_rotor_max) / T_rotor_max_iec."
-    )
-with cC:
-    st.metric(
-        "Margen I_est vs I_nom",
-        fmt_pct(margen_I),
-        help="(I_nom - I_max_est) / I_nom."
-    )
-with cD:
-    st.metric(
-        "Margen P_out vs P_nom",
-        fmt_pct(margen_P),
-        help="(P_nom - P_max_out) / P_nom."
-    )
-
-# Listado de alertas
-if flags:
-    st.markdown("#### Estado de diseño / operación")
-    for f in flags:
-        st.markdown(f"- {f}")
-else:
-    st.success("✅ Dentro de los límites configurados: sin alertas críticas para el rango de viento analizado.")
-
-st.markdown("""
-<div class="comment-box">
-  <div class="comment-title">🔍 Interpretación técnica (alertas)</div>
-  <p>
-  Este módulo resume si la configuración del piloto respeta los límites mecánicos, eléctricos y normativos que definiste:
-  </p>
-  <ul>
-    <li><strong>Margen T_gen vs T_nom</strong>: cuánto espacio queda entre el par máximo simulado y el nominal del generador.</li>
-    <li><strong>Margen T_rotor vs IEC</strong>: qué tan cerca estás del límite estructural del rotor definido por IEC 61400-2.</li>
-    <li><strong>Margen I_est vs I_nom</strong>: cuánto margen hay antes de saturar térmicamente el generador y los cables.</li>
-    <li><strong>Margen P_out vs P_nom</strong>: indica si la electrónica y el dimensionamiento de potencia están bien escalados.</li>
-  </ul>
-  <p>
-  Si aparecen alertas, el siguiente paso es iterar G, TSR objetivo, v_rated o el dimensionamiento del generador antes de escalar
-  la tecnología hacia la turbina de 80 kW.
+    Valida también la línea IEC: si <strong>T_rotor</strong> toca el límite antes de <em>v_shutdown</em>, necesitas reforzar la estructura
+    o subir el setpoint de shutdown. Esta lectura define el dimensionamiento definitivo de rodamientos y carcasas.
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -2969,6 +4332,7 @@ st.markdown("""
 # Módulo 4 – Envolvente T–rpm del generador (mapa operativo)
 # =========================================================
 st.subheader("📐 Envolvente T–rpm del generador")
+question_prompt("¿Permitirías sobrepasos breves de par fuera de la zona verde antes de activar la protección?")
 
 # Datos base desde la simulación
 rpm_gen_arr = df["rpm_gen"].values
@@ -3125,30 +4489,25 @@ fig_env.update_yaxes(
     gridcolor="rgba(148,163,184,0.35)",
     zeroline=False,
 )
-
 st.plotly_chart(fig_env, use_container_width=True)
 
 st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica (envolvente T–rpm)</div>
   <p>
-    Este mapa muestra la curva de operación del generador en el plano <strong>T_gen–rpm_gen</strong> y la compara
-    con una envolvente admisible simplificada:
+    Mantén la nube azul confinada en la caja verde; cualquier excursión sostenida en amarillo implica que el control permite
+    sobre-torque o sobrevelocidad repetitiva y debes endurecer los límites de par.
   </p>
-  <ul>
-    <li>La zona <strong>verde</strong> corresponde a operación dentro de <em>T_nom</em> y hasta ~105&nbsp;% de rpm nominal.</li>
-    <li>La zona <strong>amarilla</strong> indica regímenes donde se aproxima o supera ligeramente el par o la velocidad de diseño:
-        se toleran de forma transitoria, pero no deberían ser el punto de operación habitual.</li>
-    <li>La zona <strong>roja</strong> representa combinaciones de par y rpm que quedan fuera de la envolvente admisible y que,
-        en un diseño real, deberían gatillar limitación de par o estrategias de protección (derating, frenado, shutdown).</li>
-  </ul>
   <p>
-    Comparar la curva simulada con el punto nominal permite verificar si la estrategia MPPT y la elección de <em>G</em>
-    mantienen al generador dentro de un sobreesfuerzo razonable, especialmente al escalar el piloto hacia potencias mayores.
+    Si algunos puntos brincan a la zona roja, decide si aceptas esos transientes o si necesitas disparar frenado/shutdown antes:
+    cruces frecuentes significan que la ley MPPT y el dimensionamiento de G no escalan a un generador comercial.
   </p>
 </div>
 """, unsafe_allow_html=True)
 
+
+# Bloque – Sistema eléctrico y vibraciones
+section_header("🔌 Sistema eléctrico y vibraciones")
 
 # ==========================================================
 # Corriente estimada vs velocidad de viento (con IEC)
@@ -3157,6 +4516,7 @@ st.markdown("""
 # Corriente estimada vs velocidad de viento (con hover x-unified)
 # ==========================================================
 st.subheader("🔌 Corriente estimada vs velocidad de viento")
+question_prompt("¿Qué corriente pico estás dispuesto a tolerar antes de redimensionar cables, breaker o control de par?")
 
 # Ordenamos por viento para que la curva quede limpia
 dfI = df.sort_values("v (m/s)").copy()
@@ -3246,7 +4606,6 @@ if I_max > GDG_RATED_I:
         annotation_font_size=11,
         annotation_font_color="rgba(107,114,128,1)",
     )
-
 st.plotly_chart(figI, use_container_width=True)
 
 
@@ -3254,158 +4613,22 @@ st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica (Corriente)</div>
   <p>
-    Este gráfico muestra la corriente trifásica estimada en función de la velocidad del viento
-    y el comportamiento real del generador:
-  </p>
-  <ul>
-    <li>La línea punteada <strong>I_nom gen</strong> representa la corriente nominal de ficha del generador.</li>
-    <li>La franja resaltada sobre <strong>I_nom</strong> indica la zona donde, según los criterios de diseño de
-        turbinas de pequeña potencia (IEC 61400-2), debería actuarse con protección térmica o limitar el par.</li>
-    <li>Las líneas verticales en <strong>v_rated</strong> y <strong>v_cut-out</strong> permiten ver en qué rango de viento
-        se alcanzan las corrientes nominales y si la estrategia de control mantiene el generador dentro de un
-        sobreesfuerzo razonable.</li>
-    <li>Con esta vista puedes chequear compatibilidad con cables, protecciones y electrónica de potencia
-        para el piloto (&lt; 200 kW).</li>
-  </ul>
-</div>
-""", unsafe_allow_html=True)
-
-# ==========================================================
-# Eficiencias por etapa
-# ==========================================================
-st.subheader("📈 Eficiencias: mecánica, generador y global")
-
-# --- Vectores base (en W) ---
-v_axis      = v_grid                      # o df["v (m/s)"].values
-P_aero      = P_aero_W                    # Potencia aerodinámica
-P_mec       = P_mec_gen_W                 # Potencia mecánica en eje generador
-P_el_before = P_el_gen_W                  # Potencia eléctrica antes de electrónica
-P_out       = P_el_ac_clip                # Potencia de salida tras electrónica + clipping
-
-eta_mec_pct = 100 * np.divide(
-    P_mec, P_aero,
-    out=np.zeros_like(P_aero),
-    where=(P_aero > 0)
-)
-eta_gen_pct = 100 * np.divide(
-    P_el_before, P_mec,
-    out=np.zeros_like(P_mec),
-    where=(P_mec > 0)
-)
-eta_tot_pct = 100 * np.divide(
-    P_out, P_aero,
-    out=np.zeros_like(P_aero),
-    where=(P_aero > 0)
-)
-
-eff_df = pd.DataFrame({
-    "v (m/s)":      v_axis,
-    "η_mec [%]":   np.round(eta_mec_pct, 1),
-    "η_gen [%]":   np.round(eta_gen_pct, 1),
-    "η_total [%]": np.round(eta_tot_pct, 1),
-})
-
-figE = px.line(
-    eff_df,
-    x="v (m/s)",
-    y=["η_mec [%]", "η_gen [%]", "η_total [%]"],
-    markers=True,
-)
-
-# Estilo de trazas + hover
-figE.update_traces(
-    line=dict(width=2.4),
-    marker=dict(size=7),
-    hovertemplate=(
-        "v = %{x:.1f} m/s<br>"
-        "%{y:.1f} %<extra>%{fullData.name}</extra>"
-    ),
-)
-
-# Layout general + hover unificado
-figE.update_layout(
-    xaxis_title="v (m/s)",
-    yaxis_title="Eficiencia [%]",
-    legend_title="Etapa",
-    hovermode="x unified",         # 👈 cuadro único con las 3 eficiencias
-    plot_bgcolor="white",
-    margin=dict(l=50, r=20, t=40, b=40),
-    hoverlabel=dict(
-        bgcolor="white",
-        font_size=12,
-        font_color="black",
-    ),
-)
-
-# Fondo con solo grilla horizontal
-figE.update_xaxes(showgrid=False, zeroline=False)
-figE.update_yaxes(
-    showgrid=True,
-    gridcolor="rgba(148,163,184,0.35)",
-    zeroline=False,
-)
-
-# --- Líneas verticales: cut-in / rated / cut-out ---
-for x_val, label in [
-    (v_cut_in,  "v_cut-in"),
-    (v_rated,   "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    figE.add_vline(
-        x=float(x_val),
-        line_dash="dot",
-        line_color="rgba(148,163,184,0.8)",
-        annotation_text=label,
-        annotation_position="top",
-        annotation_font_size=11,
-        annotation_font_color="rgba(107,114,128,1)",
-    )
-
-# --- Región sombreada: potencia limitada (IEC 61400-2 para <200 kW) ---
-figE.add_vrect(
-    x0=float(v_rated),
-    x1=float(v_cut_out),
-    fillcolor="rgba(148,163,184,0.10)",
-    line_width=0,
-    layer="below",
-    annotation_text="Región potencia constante / IEC 61400-2",
-    annotation_position="top right",
-    annotation_font_size=11,
-    annotation_font_color="rgba(107,114,128,1)",
-)
-
-st.plotly_chart(figE, use_container_width=True)
-
-st.markdown("""
-<div class="comment-box">
-  <div class="comment-title">🔍 Interpretación técnica</div>
-  <p>
-  Aquí se visualizan las eficiencias mecánica, del generador y global en función del viento.
-  Una <strong>η_mec</strong> alta indica un tren de potencia bien diseñado; una <strong>η_gen</strong> estable
-  refleja un generador correctamente dimensionado; y <strong>η_total</strong> resume el rendimiento real de la turbina
-  desde el viento hasta la energía eléctrica útil, integrando todas las pérdidas intermedias.
+    Revisa dónde la curva azul cruza <strong>I_nom</strong>: si lo hace antes de <em>v_rated</em>, el MPPT está pidiendo
+    más par del que soporta el estator y necesitas bajar TSR o ajustar el factor de potencia del inversor.
   </p>
   <p>
-  La banda sombreada entre <strong>v_rated</strong> y <strong>v_cut-out</strong> corresponde a la región de
-  <em>potencia limitada</em> típica de turbinas de pequeña potencia (&lt; 200 kW, IEC 61400-2):
-  en esta zona la potencia eléctrica se mantiene prácticamente constante por límites nominales,
-  por lo que <strong>η_total</strong> disminuye con la velocidad aun cuando <strong>η_mec</strong> y
-  <strong>η_gen</strong> se mantengan elevadas. No es un fallo del tren de potencia, sino una consecuencia
-  directa de limitar la potencia de salida.
+    La franja roja determina tu dimensionamiento eléctrico: corrientes planas dentro de esa banda implican que estás
+    operando en derating permanente, así que o subes calibre y breaker o reduces el setpoint de potencia.
+    Solo tolera picos cortos entre <em>v_rated</em> y <em>v_cut-out</em>; cualquier meseta constante exige redimensionar el tren eléctrico.
   </p>
 </div>
 """, unsafe_allow_html=True)
-
-st.caption(
-    "η_total = P_out / P_aero. Si la curva de 'Pérdida por clipping' domina desde cierta v, "
-    "estás en región de potencia constante; considera redimensionar G/TSR o estrategia de control."
-)
-
 
 # ==========================================================
 # Frecuencias 1P / 3P del rotor
 # ==========================================================
 st.subheader("📡 Frecuencias 1P / 3P del rotor")
+question_prompt("¿Alguna de las frecuencias 1P o 3P coincide con modos estructurales que tengamos que evitar en el diseño final?")
 
 # Ordenamos por viento y preparamos info extra para el hover
 df_freq = df.sort_values("v (m/s)").copy()
@@ -3493,122 +4716,18 @@ figF.update_yaxes(
     gridcolor="rgba(148,163,184,0.35)",
     zeroline=False,
 )
-
 st.plotly_chart(figF, use_container_width=True)
 
 st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica (1P / 3P)</div>
   <p>
-  Las curvas muestran las <strong>frecuencias 1P</strong> (una vez por vuelta) y 
-  <strong>3P</strong> (tres veces por vuelta para rotor de 3 palas), que concentran las principales
-  cargas periódicas que excitan torre, cimentación y tren de potencia.
+    Mantén 1P fuera del modo fundamental de torre: si cruza la banda azul en el rango de operación,
+    incrementa la rigidez (torre más corta, fundación más rígida) o desplaza TSR para alejar la frecuencia.
   </p>
   <p>
-  La banda sombreada ilustra una <em>banda típica</em> de frecuencias propias de torre/fundación
-  para turbinas de pequeña potencia; en tu diseño real debes reemplazarla por los modos calculados.
-  El objetivo es que 1P y 3P no coincidan con esos modos: así evitas trabajar en
-  <strong>resonancia</strong> o en zonas de amplificación dinámica.
-  </p>
-</div>
-""", unsafe_allow_html=True)
-
-# ==========================================================
-# Curva Cp(λ)
-# ==========================================================
-
-st.subheader("🧩 Cp(λ) – Promedio, upwind y downwind")
-
-df_cp = cp_curve_for_plot(cp_params)
-
-fig_cp = px.line(
-    df_cp,
-    x="λ",
-    y=["Cp_prom", "Cp_upwind", "Cp_downwind"],
-    markers=True,
-)
-
-fig_cp.update_layout(
-    xaxis_title="λ",
-    yaxis_title="Cp",
-    legend_title="Componente",
-    hovermode="x unified",           # 🔹 tooltip unificado en x
-    plot_bgcolor="white",
-    margin=dict(l=40, r=40, t=40, b=40),
-)
-
-# Fondo con solo líneas horizontales suaves
-fig_cp.update_xaxes(
-    showgrid=False,
-    zeroline=False,
-)
-fig_cp.update_yaxes(
-    showgrid=True,
-    gridcolor="rgba(148,163,184,0.35)",
-    zeroline=False,
-)
-
-lam_opt = float(cp_params["lam_opt"])
-CP_BETZ = 16.0 / 27.0
-
-# --- Línea vertical: TSR objetivo ---
-fig_cp.add_vline(
-    x=float(tsr),
-    line_dash="dot",
-    line_color="rgba(249,115,22,0.9)",  # naranja
-    annotation_text="TSR objetivo",
-    annotation_position="top left",
-)
-
-# --- Línea vertical: λ_opt del modelo ---
-fig_cp.add_vline(
-    x=lam_opt,
-    line_dash="dash",
-    line_color="rgba(34,197,94,0.9)",  # verde
-    annotation_text="λ_opt",
-    annotation_position="top right",
-)
-
-# --- Banda recomendada alrededor de λ_opt (banda MPPT) ---
-band_half = 0.20 * lam_opt  # ±20% de λ_opt
-x0_band = lam_opt - band_half
-x1_band = lam_opt + band_half
-
-fig_cp.add_vrect(
-    x0=x0_band,
-    x1=x1_band,
-    fillcolor="rgba(59,130,246,0.08)",
-    line_width=0,
-    layer="below",
-    annotation_text="Banda MPPT recomendada",
-    annotation_position="top left",
-)
-
-# --- Límite de Betz ---
-fig_cp.add_hline(
-    y=CP_BETZ,
-    line_dash="dot",
-    line_color="rgba(234,179,8,0.9)",
-    annotation_text="Límite de Betz (0,593)",
-    annotation_position="bottom right",
-)
-
-st.plotly_chart(fig_cp, use_container_width=True)
-
-st.markdown("""
-<div class="comment-box">
-  <div class="comment-title">🔍 Interpretación técnica</div>
-  <p>
-  La curva <strong>Cp(λ)</strong> resume el rendimiento aerodinámico teórico del rotor, separando la contribución
-  <em>upwind</em> y <em>downwind</em>. La comparación entre <strong>λ_opt</strong> y el <strong>TSR objetivo</strong>
-  ayuda a ajustar el control y la geometría (solidez, helicoidal, perfil) para operar lo más cerca posible del máximo Cp
-  en el rango de vientos de interés del proyecto.
-  </p>
-  <p>
-  La banda sombreada alrededor de <strong>λ_opt</strong> representa la zona de operación recomendada para el control
-  MPPT en turbinas de pequeña potencia (IEC 61400-2): mientras la turbina se mantenga dentro de esta banda, trabaja
-  cerca del máximo rendimiento aerodinámico. La línea punteada del <strong>límite de Betz</strong> sirve como
-  referencia del máximo teórico absoluto de cualquier rotor eólico.
+    3P suele excitar aletas y mástil; si coincide con un modo, añade amortiguamiento o reconsidera número de palas/helicalidad.
+    Esta lectura decide dónde ubicar soportes de struts y qué filtros de vibración necesitas antes de fabricar el piloto.
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -3619,6 +4738,7 @@ st.markdown("""
 
 if use_noise:
     st.subheader("🔈 Ruido estimado vs velocidad de viento")
+    question_prompt("¿Cumples con los límites acústicos del sitio a la distancia crítica o necesitas estrategias de reducción de U_tip?")
 
     # --- Curva principal ---
     figNoise = px.line(
@@ -3702,23 +4822,20 @@ if use_noise:
     <div class="comment-box">
       <div class="comment-title">🔍 Interpretación técnica (ruido)</div>
       <p>
-      El modelo de ruido usa como referencia un nivel <strong>Lw_ref = {Lw_ref_dB:.0f} dB</strong> a 
-      <em>v_rated</em> y escala el nivel con una ley de potencia de la velocidad de punta
-      (<code>U_tip^n</code>, con n={n_noise:.1f}). A partir de Lw se estima el nivel de presión
-      sonora <strong>Lp_obs</strong> percibido a una distancia de <strong>{r_obs:.0f} m</strong>,
-      asumiendo propagación en campo libre.
+        Usa la curva <strong>Lp_obs</strong> para validar tu escenario de cumplimiento: si cruza los {Lp_obj:.0f} dB
+        antes de <em>v_rated</em> necesitas bajar <strong>U_tip</strong> (reducir TSR o rpm) o incrementar la distancia al receptor.
       </p>
       <p>
-      La línea verde marca un <strong>nivel objetivo</strong> en el receptor (por ejemplo, 45 dB para
-      entornos residenciales o sensibles) y la franja sombreada indica el rango de vientos en el que
-      el piloto podría superar ese valor. Esto permite anticipar si será necesario:
-      ajustar <em>TSR</em>, limitar rpm, rediseñar palas o considerar medidas de mitigación acústica
-      en el proyecto &lt; 200 kW.
+        El gradiente de la curva te dice qué tan sensible es el ruido a variaciones de TSR: pendientes muy altas sugieren
+        implementar control acústico (pitch o derating nocturno). Mantén la franja roja vacía para evitar trámites adicionales.
       </p>
     </div>
     """, unsafe_allow_html=True)
 
 
+
+# Bloque – Recurso y energía anual
+section_header("🌬️ Recurso y energía anual")
 
 # =========================================================
 # WEIBULL – SIEMPRE ACTIVO
@@ -3726,6 +4843,7 @@ if use_noise:
 
 # Título ANTES de mostrar AEP y CF
 st.subheader("🌬️ Distribución de viento vs curva de potencia")
+question_prompt("¿Qué combinación de parámetros Weibull explica mejor tu sitio y justifica cambios en P_nom o v_rated?")
 
 # Generación del vector Weibull
 v_w_max = max(v_cut_out, v_max, 20.0)
@@ -3849,7 +4967,6 @@ figW.update_layout(
         font_color="black",
     ),
 )
-
 st.plotly_chart(figW, use_container_width=True)
 
 
@@ -3858,342 +4975,538 @@ st.markdown("""
 <div class="comment-box">
   <div class="comment-title">🔍 Interpretación técnica (Weibull)</div>
   <p>
-  La curva <strong>Weibull f(v)</strong> muestra cómo se distribuyen las horas de viento a lo largo del año.
-  La curva <strong>P_out(kW)</strong> es la potencia esperada del piloto para cada velocidad.
-  La trazada punteada <strong>P_out·f(v)</strong> muestra directamente cómo contribuye cada velocidad al AEP.
+    Ajusta <strong>k</strong> y <strong>c</strong> hasta que el pico de <strong>f(v)</strong> coincida con el tramo plano de tu curva de potencia;
+    si el máximo cae en la región clippeada estás perdiendo AEP por dimensionamiento de P_nom.
+  </p>
+  <p>
+    Usa la curva punteada <strong>P·f(v)</strong> para elegir dónde invertir esfuerzos: si el área se concentra antes de 8 m/s,
+    vale más bajar v_cut-in o reforzar Cp que subir potencia nominal. Maximiza el área bajo esa curva antes de cerrar especificaciones.
+  </p>
+</div>
+""", unsafe_allow_html=True)
+
+# KPIs globales para alertas / escenarios
+# =========================================================
+max_T_gen   = float(df["T_gen (N·m)"].max())
+max_T_rotor = float(df["T_rotor (N·m)"].max())
+max_I_est   = float(df["I_est (A)"].max())
+max_rpm_rot = float(df["rpm_rotor"].max())
+max_P_out   = float(df["P_out (clip) kW"].max())
+max_g_pala  = float(np.nanmax(df["a_cen (g)"].values)) if "a_cen (g)" in df.columns else np.nan
+max_M_base  = float(np.nanmax(df["M_base (kN·m)"].values)) if "M_base (kN·m)" in df.columns else np.nan
+max_sigma_root = float(np.nanmax(sigma_root_MPa)) if sigma_root_MPa.size else np.nan
+max_sigma_strut = float(np.nanmax(sigma_strut_MPa)) if sigma_strut_MPa.size else np.nan
+
+if T_gen_nom > 0:
+    margen_Tgen_nom = (T_gen_nom - max_T_gen) / T_gen_nom
+else:
+    margen_Tgen_nom = np.nan
+
+try:
+    if T_rotor_max_iec > 0:
+        margen_Trot_iec = (T_rotor_max_iec - max_T_rotor) / T_rotor_max_iec
+    else:
+        margen_Trot_iec = np.nan
+except NameError:
+    margen_Trot_iec = np.nan
+
+if GDG_RATED_I > 0:
+    margen_I = (GDG_RATED_I - max_I_est) / GDG_RATED_I
+else:
+    margen_I = np.nan
+
+if P_nom_kW > 0:
+    margen_P = (P_nom_kW - max_P_out) / P_nom_kW
+else:
+    margen_P = np.nan
+
+if g_max_pala_iec > 0:
+    margen_g = (g_max_pala_iec - max_g_pala) / g_max_pala_iec
+else:
+    margen_g = np.nan
+
+if M_base_max_iec > 0:
+    margen_M = (M_base_max_iec - max_M_base) / M_base_max_iec
+else:
+    margen_M = np.nan
+
+if allow_root_MPa > 0:
+    margen_sigma_root = (allow_root_MPa - max_sigma_root) / allow_root_MPa
+else:
+    margen_sigma_root = np.nan
+
+if allow_strut_MPa > 0:
+    margen_sigma_strut = (allow_strut_MPa - max_sigma_strut) / allow_strut_MPa
+else:
+    margen_sigma_strut = np.nan
+
+
+# Bloque – Electrónica y red
+section_header("⚡ Electrónica y red – calidad de energía")
+
+pf_margin = pf_setpoint - pf_min_grid
+thd_margin = thd_req_pct - thd_cap_pct
+lvrt_time_margin = lvrt_cap_time_ms - lvrt_req_time_ms
+lvrt_voltage_margin = lvrt_req_voltage_pu - lvrt_cap_voltage_pu
+inv_thermal_margin = (I_inv_thermal_A - max_I_inv) / I_inv_thermal_A if I_inv_thermal_A > 0 else np.nan
+dc_util_max = float(np.nanmax(dc_util_series)) if dc_util_series.size else np.nan
+dc_margin = 1.0 - dc_util_max if np.isfinite(dc_util_max) else np.nan
+
+st.subheader("⚡ Electrónica y red – calidad de energía")
+question_prompt("¿PF, THD y LVRT cumplen la normativa y queda margen térmico/energético en el bus DC?")
+
+col_e1, col_e2, col_e3, col_e4, col_e5 = st.columns(5)
+with col_e1:
+    accent = "red" if pf_margin < 0 else "orange" if pf_margin < 0.02 else "green"
+    kpi_card(
+        "PF operativo",
+        f"{pf_setpoint:.2f}",
+        f"Margen vs red: {pf_margin:+.2f}",
+        accent=accent
+    )
+with col_e2:
+    accent = "red" if thd_margin < 0 else "orange" if thd_margin < 1 else "green"
+    kpi_card(
+        "THD estimada",
+        f"{thd_cap_pct:.1f} %",
+        f"Límite {thd_req_pct:.1f}% · margen {thd_margin:+.1f}%",
+        accent=accent
+    )
+with col_e3:
+    lvrt_ok = lvrt_time_margin >= 0 and lvrt_voltage_margin >= 0
+    accent = "green" if lvrt_ok else "red"
+    kpi_card(
+        "LVRT capacidad",
+        f"{lvrt_cap_time_ms:.0f} ms / {lvrt_cap_voltage_pu:.2f} pu",
+        f"Δt {lvrt_time_margin:+.0f} ms · ΔV {lvrt_voltage_margin:+.2f} pu",
+        accent=accent
+    )
+with col_e4:
+    accent = "red" if inv_thermal_margin < 0 else "orange" if inv_thermal_margin < 0.1 else "green"
+    kpi_card(
+        "Margen térmico inversor",
+        f"{(inv_thermal_margin*100):+.1f} %" if np.isfinite(inv_thermal_margin) else "N/A",
+        f"I_max simulado ≈ {max_I_inv:.1f} A",
+        accent=accent
+    )
+with col_e5:
+    accent = "red" if dc_margin < 0 else "orange" if dc_margin < 0.05 else "green"
+    kpi_card(
+        "Duty bus DC",
+        f"{dc_util_max*100:.1f} %" if np.isfinite(dc_util_max) else "N/A",
+        f"Margen {dc_margin*100:+.1f} %",
+        accent=accent
+    )
+
+fig_dc = go.Figure()
+fig_dc.add_trace(go.Scatter(
+    x=v_grid,
+    y=dc_util_series * 100.0,
+    mode="lines+markers",
+    name="Duty DC [%]",
+    hovertemplate="v = %{x:.2f} m/s<br>Duty = %{y:.1f}%<extra></extra>"
+))
+fig_dc.add_hline(
+    y=100,
+    line_dash="dash",
+    line_color="#dc2626",
+    annotation_text="Capacidad Vdc·Idc",
+    annotation_position="top left"
+)
+for x_line, label in [
+    (v_cut_in, "v_cut-in"),
+    (v_rated, "v_rated"),
+    (v_cut_out, "v_cut-out"),
+]:
+    fig_dc.add_vline(
+        x=x_line,
+        line_dash="dot",
+        line_color="rgba(71,85,105,0.6)",
+        annotation_text=label,
+        annotation_position="top"
+    )
+fig_dc.update_layout(
+    title="Utilización del bus DC vs viento",
+    xaxis_title="v (m/s)",
+    yaxis_title="Duty DC [%] (|P| / Vdc·Idc)",
+    template="plotly_white",
+    hovermode="x unified"
+)
+st.plotly_chart(fig_dc, use_container_width=True)
+
+st.markdown("""
+<div class="comment-box">
+  <div class="comment-title">🔌 Interpretación técnica (electrónica)</div>
+  <p>
+    Mantén el PF por encima del mínimo exigido para evitar penalizaciones de la distribuidora y verifica que la THD calculada
+    por tus filtros se mantenga por debajo del límite normativo. Si alguno de los márgenes se vuelve negativo, deberás
+    recalibrar la electrónica (filtros, control de reactive o hardware).
+  </p>
+  <p>
+    El bloque LVRT compara tu capacidad frente al requisito del código de red, mientras que el duty del bus DC te indica qué
+    tan cerca estás de saturar V_dc·I_dc_nom. Usa estos indicadores para dimensionar disipadores, capacitores y protecciones.
   </p>
 </div>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# NUEVO: Calibración modelo vs datos piloto (SCADA)
+# Módulo 3 – Alertas de diseño / operación (IEC-style)
 # =========================================================
-st.subheader("🧪 Calibración modelo vs datos piloto (SCADA)")
+st.markdown('<div id="alertas"></div>', unsafe_allow_html=True)
+st.subheader("🚨 Alertas de diseño / operación")
+question_prompt("¿Cuál de los márgenes (par, corriente, potencia o rpm) se acerca más al cero y requiere acciones inmediatas?")
 
-df_scada = st.session_state.get("df_scada_raw", None)
-scada_map = st.session_state.get("scada_map", None)
+flag_entries = []
 
-if df_scada is None or scada_map is None:
-    st.info(
-        "Sube un CSV en el panel lateral (expander 'Datos piloto (SCADA)') "
-        "para comparar el modelo con las mediciones del piloto."
-    )
-else:
-    # Limpieza básica
-    df_sc = df_scada.copy()
-
-    v_col = scada_map["v"]
-    P_col = scada_map["P"]
-
-    # El modelo está en df con 'v (m/s)' y 'P_out (clip) kW'
-    v_meas = df_sc[v_col].astype(float).values
-    P_meas = df_sc[P_col].astype(float).values
-
-    # Interpolamos la potencia modelo en las velocidades medidas
-    P_model = np.interp(
-        v_meas,
-        df["v (m/s)"].values,
-        df["P_out (clip) kW"].values,
-        left=0.0,
-        right=0.0,
-    )
-
-    # Cálculo de métricas de ajuste
-    mask_valid = ~np.isnan(P_meas) & ~np.isnan(P_model)
-    if mask_valid.sum() > 3:
-        err = P_model[mask_valid] - P_meas[mask_valid]
-        bias = np.mean(err)
-        rmse = np.sqrt(np.mean(err**2))
-        ss_res = np.sum((P_meas[mask_valid] - P_model[mask_valid])**2)
-        ss_tot = np.sum((P_meas[mask_valid] - np.mean(P_meas[mask_valid]))**2)
-        r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
-    else:
-        bias = rmse = r2 = np.nan
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Bias modelo - medida [kW]", f"{bias:,.2f}")
-    c2.metric("RMSE [kW]", f"{rmse:,.2f}")
-    c3.metric("R² ajuste", f"{r2:,.2f}")
-
-    st.caption(
-        "Bias > 0 indica que el modelo sobreestima la potencia respecto al piloto; "
-        "Bias < 0 indica subestimación. RMSE resume el error típico por punto, y R² "
-        "qué tan bien el modelo explica la variabilidad de las mediciones."
-    )
-
-    # ---------------- Gráfico 1: v vs Potencia ----------------
-    st.markdown("#### Potencia eléctrica: modelo vs piloto")
-
-    df_plotP = pd.DataFrame({
-        "v (m/s)": v_meas,
-        "P_meas (kW)": P_meas,
-        "P_model (kW)": P_model,
+def add_flag(message, suggestion=None):
+    flag_entries.append({
+        "message": message,
+        "suggestion": suggestion,
     })
 
-    fig_scada_P = px.scatter(
-        df_plotP,
-        x="v (m/s)",
-        y="P_meas (kW)",
-        opacity=0.7,
-        labels={"P_meas (kW)": "Potencia medida [kW]"},
-        title="Potencia medida vs modelo",
-    )
-    # Agregamos la curva modelo suavizada vs viento
-    fig_scada_P.add_trace(
-        go.Scatter(
-            x=df["v (m/s)"],
-            y=df["P_out (clip) kW"],
-            mode="lines",
-            name="P_model curva",
-        )
-    )
-    fig_scada_P.update_layout(
-        legend_title="Serie",
-        xaxis_title="v (m/s)",
-        yaxis_title="Potencia [kW]",
-    )
-    st.plotly_chart(fig_scada_P, use_container_width=True)
-
-    # ---------------- Gráfico 2: rpm rotor ----------------
-    rpm_rotor_col = scada_map.get("rpm_rotor", None)
-    if rpm_rotor_col is not None:
-        st.markdown("#### rpm rotor: modelo vs piloto")
-
-        rpm_meas = df_sc[rpm_rotor_col].astype(float).values
-        rpm_model = np.interp(
-            v_meas,
-            df["v (m/s)"].values,
-            df["rpm_rotor"].values,
-            left=0.0,
-            right=0.0,
-        )
-        df_plotR = pd.DataFrame({
-            "v (m/s)": v_meas,
-            "rpm_meas": rpm_meas,
-            "rpm_model": rpm_model,
-        })
-
-        fig_scada_R = px.scatter(
-            df_plotR,
-            x="v (m/s)",
-            y="rpm_meas",
-            opacity=0.7,
-            labels={"rpm_meas": "rpm rotor medida"},
-            title="rpm rotor medida vs modelo",
-        )
-        fig_scada_R.add_trace(
-            go.Scatter(
-                x=df["v (m/s)"],
-                y=df["rpm_rotor"],
-                mode="lines",
-                name="rpm_rotor modelo",
+if T_gen_nom > 0:
+    over_pct = (max_T_gen - T_gen_nom) / T_gen_nom * 100
+    if over_pct > 5:
+        f_geom_tgen = (T_gen_nom / max_T_gen) ** (1/3) if max_T_gen > 0 else 1.0
+        G_target = G * (max_T_gen / T_gen_nom) if G > 0 else None
+        suggestion = []
+        if np.isfinite(f_geom_tgen):
+            suggestion.append(
+                f"Escala D/H por f ≈ {f_geom_tgen:.2f} (D {D*f_geom_tgen:.2f} m, H {H*f_geom_tgen:.2f} m)"
             )
+        if G_target is not None and np.isfinite(G_target):
+            suggestion.append(f"Ajusta la relación G ≈ {G_target:.2f} (actual {G:.2f})")
+        add_flag(
+            f"⚠️ El par máximo en el generador ({max_T_gen:,.0f} N·m) "
+            f"supera el par nominal de ficha ({T_gen_nom:,.0f} N·m) "
+            f"en un {over_pct:,.0f} %. Revisa G, TSR objetivo o estrategia de control.",
+            " / ".join(suggestion) if suggestion else None
         )
-        fig_scada_R.update_layout(
-            xaxis_title="v (m/s)",
-            yaxis_title="rpm rotor",
+
+if T_gen_max > 0 and max_T_gen > 1.05 * T_gen_max:
+    f_geom_tmax = (T_gen_max / max_T_gen) ** (1/3) if max_T_gen > 0 else 1.0
+    suggestion = f"Reduce D/H por f ≈ {f_geom_tmax:.2f} o baja G para llevar el par por debajo de {T_gen_max:,.0f} N·m." if np.isfinite(f_geom_tmax) else None
+    add_flag(
+        f"⚠️ El par máximo en el generador ({max_T_gen:,.0f} N·m) excede el límite de diseño "
+        f"configurado T_gen_max = {T_gen_max:,.0f} N·m (IEC / criterio estructural).",
+        suggestion
+    )
+
+try:
+    if T_rotor_max_iec > 0 and max_T_rotor > 1.02 * T_rotor_max_iec:
+        f_rotor_lim = (T_rotor_max_iec / max_T_rotor) ** (1/3) if max_T_rotor > 0 else 1.0
+        suggestion = (
+            f"Escala D/H por f ≈ {f_rotor_lim:.2f} → D {D*f_rotor_lim:.2f} m, H {H*f_rotor_lim:.2f} m o aligera palas."
+            if np.isfinite(f_rotor_lim) else None
         )
-        st.plotly_chart(fig_scada_R, use_container_width=True)
-
-    # ---------------- Gráfico 3: corriente ----------------
-    I_col = scada_map.get("I", None)
-    if I_col is not None:
-        st.markdown("#### Corriente: modelo vs piloto")
-
-        I_meas = df_sc[I_col].astype(float).values
-        I_model = np.interp(
-            v_meas,
-            df["v (m/s)"].values,
-            df["I_est (A)"].values,
-            left=0.0,
-            right=0.0,
+        add_flag(
+            f"⚠️ El par máximo en el rotor ({max_T_rotor:,.0f} N·m) supera el límite IEC configurado "
+            f"T_rotor_max_iec = {T_rotor_max_iec:,.0f} N·m. Requiere revisión estructural.",
+            suggestion
         )
-        df_plotI = pd.DataFrame({
-            "v (m/s)": v_meas,
-            "I_meas (A)": I_meas,
-            "I_model (A)": I_model,
-        })
+except NameError:
+    pass
 
-        fig_scada_I = px.scatter(
-            df_plotI,
-            x="v (m/s)",
-            y="I_meas (A)",
-            opacity=0.7,
-            labels={"I_meas (A)": "Corriente medida [A]"},
-            title="Corriente medida vs modelo",
+if GDG_RATED_I > 0 and max_I_est > 1.05 * GDG_RATED_I:
+    P_target = P_nom_kW * (GDG_RATED_I / max_I_est) if P_nom_kW > 0 else None
+    suggestion = (
+        f"Reduce P_nom a ≈ {P_target:.1f} kW o incrementa la especificación de I_nom ≥ {max_I_est:.1f} A."
+        if P_target and np.isfinite(P_target) else
+        f"Sube el generador/inversor a I_nom ≥ {max_I_est:.1f} A."
+    )
+    add_flag(
+        f"⚠️ La corriente máxima estimada ({max_I_est:,.1f} A) supera en más de un 5% "
+        f"la corriente nominal de la máquina ({GDG_RATED_I:.1f} A). "
+        "Revisa el dimensionamiento de cables, protecciones y el setpoint de potencia.",
+        suggestion
+    )
+
+try:
+    if rpm_rotor_max_iec > 0 and max_rpm_rot > 1.02 * rpm_rotor_max_iec:
+        rpm_target = rpm_rotor_rated * (rpm_rotor_max_iec / max_rpm_rot) if rpm_rotor_rated > 0 else rpm_rotor_max_iec
+        suggestion = None
+        if np.isfinite(rpm_target):
+            suggestion = f"Configura rpm_rotor_rated ≤ {rpm_target:.1f} rpm o baja λ_control para sostener rpm ≤ {rpm_rotor_max_iec:.1f}."
+        add_flag(
+            f"⚠️ La rpm máxima del rotor ({max_rpm_rot:.1f} rpm) excede el límite IEC configurado "
+            f"rpm_rotor_max_iec = {rpm_rotor_max_iec:.1f} rpm. Ajusta el control de velocidad / shutdown.",
+            suggestion
         )
-        fig_scada_I.add_trace(
-            go.Scatter(
-                x=df["v (m/s)"],
-                y=df["I_est (A)"],
-                mode="lines",
-                name="I_model curva",
-            )
-        )
-        fig_scada_I.update_layout(
-            xaxis_title="v (m/s)",
-            yaxis_title="Corriente [A]",
-        )
-        st.plotly_chart(fig_scada_I, use_container_width=True)
+except NameError:
+    pass
 
-    st.markdown("""
-    <div class="comment-box">
-      <div class="comment-title">🔍 Interpretación técnica (calibración)</div>
-      <p>
-      La comparación modelo vs mediciones permite ajustar el diseño del piloto:
-      <ul>
-        <li><strong>Bias</strong> positivo indica que el modelo está siendo optimista en potencia.</li>
-        <li><strong>RMSE</strong> cuantifica el error típico por bin de viento.</li>
-        <li><strong>R²</strong> muestra qué tan bien el modelo reproduce la variabilidad real del piloto.</li>
-      </ul>
-      Si se observan desvíos sistemáticos en cierto rango de vientos, conviene revisar:
-      Cp(λ), pérdidas mecánicas, curva interna del generador o configuración de control (TSR objetivo y G).
-      </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-
-# =========================================================
-# Recomendaciones dinámicas
-# =========================================================
-
-# 1) Construimos la lista 'bullets' en función de los resultados
-bullets = []
-
-# Arranque / cut-in
-if v_cut_in > 3.5:
-    bullets.append(
-        f"Arranque: v_cut-in = {v_cut_in:.1f} m/s es algo alta; evalúa bajar a 3–3.5 m/s "
-        "con más solidez o apoyo Savonius/kick para mejorar energía en vientos bajos."
+if g_max_pala_iec > 0 and max_g_pala > 1.02 * g_max_pala_iec:
+    rpm_target = rpm_rotor_rated * np.sqrt(g_max_pala_iec / max_g_pala) if rpm_rotor_rated > 0 else rpm_rotor_rated
+    suggestion = (
+        f"Baja rpm_rotor_rated a ≈ {rpm_target:.1f} rpm o reduce la masa efectiva de cada pala."
+        if np.isfinite(rpm_target) else "Reduce rpm controlada o aligera las palas para disminuir g_radial."
     )
-else:
-    bullets.append(
-        f"Arranque: v_cut-in = {v_cut_in:.1f} m/s es adecuada para capturar energía en vientos bajos "
-        "sin penalizar demasiado el par de arranque."
+    add_flag(
+        f"⚠️ La aceleración radial máxima ({max_g_pala:.1f} g) supera el límite configurado "
+        f"({g_max_pala_iec:.1f} g). Revisa rpm_rated, masa de pala o control de velocidad.",
+        suggestion
     )
 
-# Solidez / Cp
-if sig_conv < 0.22:
-    bullets.append(
-        f"Solidez: σ_conv ≈ {sig_conv:.2f} indica un rotor liviano; podrías subir ligeramente c o N "
-        "para ganar Cp en rangos medios de viento."
+if M_base_max_iec > 0 and max_M_base > 1.02 * M_base_max_iec:
+    lever_target = lever_arm_pala * (M_base_max_iec / max_M_base)
+    suggestion = (
+        f"Reubica struts para un brazo efectivo ≈ {lever_target:.2f} m (actual {lever_arm_pala:.2f} m)."
+        if np.isfinite(lever_target) else "Disminuye el brazo efectivo de struts o el momento aplicado."
     )
-elif sig_conv > 0.30:
-    bullets.append(
-        f"Solidez: σ_conv ≈ {sig_conv:.2f} es alta; revisa cargas inerciales y par en arranque, "
-        "porque el rotor puede volverse pesado para rpm bajas."
-    )
-else:
-    bullets.append(
-        f"Solidez: σ_conv ≈ {sig_conv:.2f} está en el rango 0.22–0.30, razonable para un VAWT de potencia."
+    add_flag(
+        f"⚠️ El momento flector máximo en la unión pala–struts ({max_M_base:.0f} kN·m) excede el límite definido "
+        f"({M_base_max_iec:.0f} kN·m). Ajusta el brazo efectivo, masa de pala o estrategia de control.",
+        suggestion
     )
 
-# Eficiencias
-if eta_mec < 0.95:
-    bullets.append(
-        f"Eficiencia mecánica: η_mec ≈ {eta_mec:.3f}; conviene revisar pérdidas en rodamientos y caja "
-        "porque podrías estar perdiendo varios puntos de rendimiento antes del generador."
+if allow_root_MPa > 0 and max_sigma_root > 1.02 * allow_root_MPa:
+    W_target = section_modulus_root * (max_sigma_root / allow_root_MPa) if section_modulus_root > 0 else None
+    suggestion = (
+        f"Incrementa W en raíz a ≈ {W_target:.3f} m³ o reduce M_base con menor masa/TSR."
+        if W_target and np.isfinite(W_target) else "Aumenta W en raíz o reduce M_base (masa/TSR)."
     )
-else:
-    bullets.append(
-        f"Eficiencia mecánica: η_mec ≈ {eta_mec:.3f} es buena para un tren de potencia con caja de engranajes."
-    )
-
-if eta_elec < 0.97:
-    bullets.append(
-        f"Eficiencia electrónica: η_elec ≈ {eta_elec:.3f}; considera equipos más eficientes o mejor ajuste de PF "
-        "si el proyecto es muy sensible al LCOE."
+    add_flag(
+        f"⚠️ La tensión en raíz ({max_sigma_root:.1f} MPa) supera el admisible "
+        f"({allow_root_MPa:.1f} MPa, FS={safety_target:.2f}).",
+        suggestion
     )
 
-# Factor de planta / AEP
-if CF < 0.20:
-    bullets.append(
-        f"Factor de planta: FP ≈ {CF*100:.1f}% es algo bajo; revisa ajuste entre Weibull del sitio, "
-        "v_rated y potencia nominal para mejorar utilización anual."
+if allow_strut_MPa > 0 and max_sigma_strut > 1.02 * allow_strut_MPa:
+    area_target_cm2 = strut_area_cm2 * (max_sigma_strut / allow_strut_MPa) if strut_area_cm2 > 0 else None
+    suggestion = (
+        f"Aumenta área efectiva de strut a ≈ {area_target_cm2:.1f} cm² o reduce M_base."
+        if area_target_cm2 and np.isfinite(area_target_cm2) else "Aumenta área de strut o reduce M_base."
     )
-else:
-    bullets.append(
-        f"Factor de planta: FP ≈ {CF*100:.1f}% es razonable; el dimensionamiento entre viento del sitio y "
-        "potencia nominal parece coherente."
+    add_flag(
+        f"⚠️ La tensión en struts ({max_sigma_strut:.1f} MPa) supera el admisible "
+        f"({allow_strut_MPa:.1f} MPa, FS={safety_target:.2f}).",
+        suggestion
     )
-# Curvas respecto al viento / TSR / rpm (fundamento IEC)
-bullets.append(
-    "Curvas respecto al viento: una turbina no se diseña con rpm como entrada; "
-    "las rpm son un resultado directo del TSR y de la velocidad del viento. "
-    "Por norma internacional (IEC 61400-12-1 e IEC 61400-2), la potencia, el par, el Cp, "
-    "las pérdidas y las rpm deben expresarse en función del viento, porque es la variable "
-    "física primaria que gobierna el comportamiento del aerogenerador y la única referencia "
-    "universal para comparar turbinas, validar rendimiento y certificar la curva de potencia."
+
+if P_nom_kW > 0 and max_P_out > 1.02 * P_nom_kW:
+    suggestion = (
+        f"Sube el límite de inversor a ≥ {max_P_out:.1f} kW o recorta TSR para que P_out máx ≤ {P_nom_kW:.1f} kW."
+        if np.isfinite(max_P_out) else None
+    )
+    add_flag(
+        f"⚠️ La potencia máxima de salida ({max_P_out:.1f} kW) supera en más de un 2% "
+        f"la potencia nominal del sistema ({P_nom_kW:.1f} kW). Revisa el clipping y los límites del inversor.",
+        suggestion
+    )
+
+margin_cards_data = [
+    {
+        "label": "Margen T_gen vs T_nom",
+        "value": margen_Tgen_nom,
+        "help": "(T_nom - T_max) / T_nom. Valores negativos indican sobrecarga."
+    },
+    {
+        "label": "Margen T_rotor vs IEC",
+        "value": margen_Trot_iec,
+        "help": "(T_rotor_max_iec - T_rotor_max) / T_rotor_max_iec."
+    },
+    {
+        "label": "Margen I_est vs I_nom",
+        "value": margen_I,
+        "help": "(I_nom - I_max_est) / I_nom."
+    },
+    {
+        "label": "Margen P_out vs P_nom",
+        "value": margen_P,
+        "help": "(P_nom - P_max_out) / P_nom."
+    },
+    {
+        "label": "Margen g_radial vs IEC",
+        "value": margen_g,
+        "help": "(g_max - g_max_medida) / g_max."
+    },
+    {
+        "label": "Margen M_base vs IEC",
+        "value": margen_M,
+        "help": "(M_límite - M_max) / M_límite."
+    },
+    {
+        "label": "Margen sigma_root vs FS",
+        "value": margen_sigma_root,
+        "help": "(sigma_allow - sigma_root_max) / sigma_allow."
+    },
+    {
+        "label": "Margen sigma_strut vs FS",
+        "value": margen_sigma_strut,
+        "help": "(sigma_allow - sigma_strut_max) / sigma_allow."
+    },
+]
+
+def margin_status(val: float) -> str:
+    if not np.isfinite(val):
+        return "neutral"
+    if val < 0:
+        return "danger"
+    if val < 0.1:
+        return "warn"
+    return "ok"
+
+cols_margins = st.columns(len(margin_cards_data))
+for col, card in zip(cols_margins, margin_cards_data):
+    val = card["value"]
+    val_text = f"{val*100:.1f} %" if np.isfinite(val) else "N/A"
+    help_txt = escape(card["help"])
+    col.markdown(
+        f"""
+        <div class="margin-card margin-{margin_status(val)}">
+            <div class="margin-card__title">
+                <span>{escape(card["label"])}</span>
+                <span class="margin-card__badge" title="{help_txt}">?</span>
+            </div>
+            <div class="margin-card__value">{val_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# Tabla resumida de uso de límites
+alert_rows = [
+    {
+        "Indicador": "T_gen (N·m)",
+        "Máximo": max_T_gen,
+        "Límite": T_gen_nom if T_gen_nom > 0 else np.nan,
+        "Uso_%": (max_T_gen / T_gen_nom * 100) if T_gen_nom > 0 else np.nan,
+    },
+    {
+        "Indicador": "T_rotor (N·m)",
+        "Máximo": max_T_rotor,
+        "Límite": T_rotor_max_iec if 'T_rotor_max_iec' in locals() and T_rotor_max_iec > 0 else np.nan,
+        "Uso_%": (max_T_rotor / T_rotor_max_iec * 100) if 'T_rotor_max_iec' in locals() and T_rotor_max_iec > 0 else np.nan,
+    },
+    {
+        "Indicador": "I_est (A)",
+        "Máximo": max_I_est,
+        "Límite": GDG_RATED_I if GDG_RATED_I > 0 else np.nan,
+        "Uso_%": (max_I_est / GDG_RATED_I * 100) if GDG_RATED_I > 0 else np.nan,
+    },
+    {
+        "Indicador": "P_out (kW)",
+        "Máximo": max_P_out,
+        "Límite": P_nom_kW if P_nom_kW > 0 else np.nan,
+        "Uso_%": (max_P_out / P_nom_kW * 100) if P_nom_kW > 0 else np.nan,
+    },
+    {
+        "Indicador": "a_cen (g)",
+        "Máximo": max_g_pala,
+        "Límite": g_max_pala_iec if g_max_pala_iec > 0 else np.nan,
+        "Uso_%": (max_g_pala / g_max_pala_iec * 100) if g_max_pala_iec > 0 else np.nan,
+    },
+    {
+        "Indicador": "M_base (kN·m)",
+        "Máximo": max_M_base,
+        "Límite": M_base_max_iec if M_base_max_iec > 0 else np.nan,
+        "Uso_%": (max_M_base / M_base_max_iec * 100) if M_base_max_iec > 0 else np.nan,
+    },
+]
+
+df_alerts = pd.DataFrame(alert_rows)
+df_alerts["Margen_%"] = 100 - df_alerts["Uso_%"]
+
+def classify_usage(u):
+    if not np.isfinite(u):
+        return "Sin dato"
+    if u < 90:
+        return "Seguro"
+    if u < 100:
+        return "Atento"
+    return "Crítico"
+
+df_alerts["Estado"] = df_alerts["Uso_%"].apply(classify_usage)
+
+st.dataframe(
+    df_alerts.style.format({
+        "Máximo": "{:,.1f}",
+        "Límite": "{:,.1f}",
+        "Uso_%": "{:,.1f}",
+        "Margen_%": "{:,.1f}",
+    }).apply(
+        lambda row: ["background-color: #dcfce7" if row.Estado == "Seguro"
+                     else "background-color: #fef9c3" if row.Estado == "Atento"
+                     else "background-color: #fee2e2" if row.Estado == "Crítico"
+                     else ""]
+            * len(row),
+        axis=1
+    ),
+    use_container_width=True,
 )
 
-# Si por alguna razón no se generó nada:
-if not bullets:
-    bullets.append(
-        "Configuración del piloto consistente; se recomienda validar en sitio con mediciones "
-        "de viento y curvas del generador antes de congelar diseño."
-    )
+if flag_entries:
+    section_header("Estado de diseño / operación", level=3)
+    for entry in flag_entries:
+        st.warning(entry["message"])
+        if entry.get("suggestion"):
+            st.caption(f"Valor sugerido: {entry['suggestion']}")
+else:
+    st.success("✅ Dentro de los límites configurados: sin alertas críticas para el rango de viento analizado.")
 
-# 2) Caja completa: recomendaciones + fórmulas
 st.markdown("""
-<div class="rec-wrapper">
-  <div class="rec-header">
-    <div class="rec-header-icon">🛠️</div>
-    <div>
-      <div class="rec-header-chip">Salida automática del modelo</div>
-      <div class="rec-header-text-main">Recomendaciones para el piloto</div>
-    </div>
-  </div>
-""", unsafe_allow_html=True)
-
-# Recomendaciones (usamos la lista 'bullets')
-for b in bullets:
-    st.markdown(f"<div class='rec-item'>{b}</div>", unsafe_allow_html=True)
-
-# === Caja de fórmulas en dos columnas (versión Streamlit) ===
-
-# Cabecera con el mismo look de caja
-st.markdown("""
-<div class="formula-box">
-    <div class="formula-title">🧮 Fórmulas clave</div>
+<div class="comment-box">
+  <div class="comment-title">🔍 Interpretación técnica (alertas)</div>
+  <p>
+    La tabla resume el método: se toma el máximo simulado vs el límite configurado (IEC o ficha) y se calcula el % de uso.
+    Usa estos márgenes como semáforo para liberar o no el diseño:
+  </p>
+  <ul>
+    <li><strong>Margen T_gen</strong> &lt; 0 → baja G o sube la especificación del generador antes de fabricar.</li>
+    <li><strong>Margen T_rotor</strong> próximo a 0 → refuerza palas/struts o reduce TSR en vientos altos.</li>
+    <li><strong>Margen I_est</strong> negativo → revisa cables, breaker y electrónica o ajusta PF.</li>
+    <li><strong>Margen P_out</strong> negativo → el inversor clippea demasiado; necesitas otro nivel de potencia.</li>
+  </ul>
+  <p>
+    No cierres el diseño mientras algún margen sea negativo; prioriza corregirlos en ese orden porque definen esfuerzos,
+    cumplimiento IEC y disipación térmica.
+  </p>
 </div>
 """, unsafe_allow_html=True)
-
-# Dos columnas reales de Streamlit
-col1, col2 = st.columns(2)
-
-# ----------- COLUMNA IZQUIERDA ----------
-with col1:
-    st.latex(r"\bullet\ \text{TSR: }\lambda = \dfrac{\omega R}{v} = \dfrac{U_{\text{tip}}}{v}")
-    st.latex(r"\bullet\ \text{rpm (rotor): }\text{rpm} = \dfrac{30}{\pi R}\,\lambda\,v")
-    st.latex(r"\bullet\ \text{Potencia aerodinámica: }P_a = \dfrac{1}{2}\rho A v^{3} C_p(\lambda)")
-    st.latex(r"\bullet\ \text{Par: }T = \dfrac{P}{\omega}")
-
-# ----------- COLUMNA DERECHA ----------
-with col2:
-    st.latex(r"\bullet\ \text{Frecuencia eléctrica: }f_e = \dfrac{P_{\text{polos}}}{2}\,\dfrac{\text{rpm}_{gen}}{60}")
-    st.latex(r"\bullet\ \text{Corriente trifásica (aprox.): }I \approx \dfrac{P}{\sqrt{3}\,V_{LL}\,PF}")
-    st.latex(r"\bullet\ \text{Reynolds pala: }Re \approx \dfrac{\rho\,U_{\text{tip}}\,c}{\mu}")
 
 # =========================================================
 # Resumen IEC 61400-2 – tabla operativa
 # =========================================================
 st.subheader("📋 Resumen IEC 61400-2 – operación por bin de viento")
+question_prompt("¿Qué filas de la tabla IEC necesitas documentar para tu expediente de certificación antes de avanzar a la siguiente iteración?")
 
-df_iec = df[[
-    "v (m/s)",
-    "rpm_rotor",
-    "rpm_gen",
-    "λ_efectiva",
-    "P_aero (kW)",
-    "P_mec_gen (kW)",
-    "P_out (clip) kW",
-    "T_rotor (N·m)",
-    "T_gen (N·m)",
-    "Cp_aero_equiv",
-    "Cp_el_equiv",
-    "I_est (A)",
-]]
+region_iec = df["v (m/s)"].apply(region_tag)
+
+flag_t_rotor = np.full(len(df), "OK", dtype=object)
+flag_t_gen = np.full(len(df), "OK", dtype=object)
+flag_I = np.full(len(df), "OK", dtype=object)
+
+if "T_rotor_max_iec" in locals() and T_rotor_max_iec > 0:
+    flag_t_rotor = np.where(df["T_rotor (N·m)"] > T_rotor_max_iec, "⚠️", "OK")
+
+if T_gen_max > 0:
+    flag_t_gen = np.where(df["T_gen (N·m)"] > T_gen_max, "⚠️", "OK")
+elif GDG_RATED_T_Nm > 0:
+    flag_t_gen = np.where(df["T_gen (N·m)"] > GDG_RATED_T_Nm, "⚠️", "OK")
+
+if GDG_RATED_I > 0:
+    flag_I = np.where(df["I_est (A)"] > GDG_RATED_I, "⚠️", "OK")
+
+df_iec = pd.DataFrame({
+    "v (m/s)": df["v (m/s)"],
+    "Región IEC": region_iec,
+    "rpm_rotor": df["rpm_rotor"],
+    "rpm_gen": df["rpm_gen"],
+    "λ_efectiva": df["λ_efectiva"],
+    "T_rotor (N·m)": df["T_rotor (N·m)"],
+    "T_rotor estado": flag_t_rotor,
+    "T_gen (N·m)": df["T_gen (N·m)"],
+    "T_gen estado": flag_t_gen,
+    "a_cen (g)": df["a_cen (g)"],
+    "a_cen estado": np.where(df["a_cen (g)"] > g_max_pala_iec, "⚠️", "OK") if g_max_pala_iec > 0 else "OK",
+    "M_base (kN·m)": df["M_base (kN·m)"],
+    "M_base estado": np.where(df["M_base (kN·m)"] > M_base_max_iec, "⚠️", "OK") if M_base_max_iec > 0 else "OK",
+    "M_por_strut (kN·m)": df["M_por_strut (kN·m)"],
+    "P_mec eje (kW)": df["P_mec_gen (kW)"],
+    "P_out (kW)": df["P_out (clip) kW"],
+    "I_est (A)": df["I_est (A)"],
+    "I estado": flag_I,
+})
 
 st.dataframe(df_iec, use_container_width=True)
 
@@ -4203,6 +5516,10 @@ st.download_button(
     file_name="IEC61400_2_resumen_operativo.csv",
     mime="text/csv"
 )
+
+
+# 📄 Nota técnica (IEC 61400-2) – cierre
+# =========================================================
 st.markdown("""
 ---
 
@@ -4211,20 +5528,20 @@ st.markdown("""
 Esta es la **tabla de operación del prototipo conforme a IEC 61400-2**:  
 para cada *bin* de viento se documentan:
 
-- **rpm del rotor y del generador**,  
-- **TSR (λ)**,  
-- **Torque** (rotor y eje lento/rápido),  
-- **Potencia aerodinámica, mecánica y eléctrica**,  
-- **Cp equivalente** según región de control (cut-in / rated / cut-out),  
-- **Corriente trifásica estimada** en el generador al punto operativo.
+- **Región IEC** (pre cut-in / MPPT / potencia limitada / sobre cut-out),
+- **rpm del rotor y del generador** y su **TSR (λ)**,
+- **Torque** en rotor y eje lento/rápido con banderas de cumplimiento,
+- **Potencia mecánica en el eje y potencia eléctrica disponible**,  
+- **Corriente trifásica estimada** en el generador con alerta frente a I_nom o límite configurado.
 
 Este registro es requerido para **validación estructural, evaluación energética (AEP), chequeo de límites de diseño** y para la preparación de documentación técnica del piloto en conformidad con IEC 61400-2 e IEC 61400-12-1.
 """)
 
-# =========================================================
+
 # Escenarios de diseño y comparador
 # =========================================================
 st.subheader("🧬 Escenarios de diseño y comparación")
+question_prompt("¿Qué métrica (AEP, CF, márgenes IEC) quieres optimizar cuando compares dos configuraciones?")
 
 # Inicializar contenedor de escenarios
 if "escenarios" not in st.session_state:
@@ -4274,7 +5591,8 @@ with colE2:
                 "helical": helical,
                 "endplates": endplates,
                 "trips": trips,
-                "struts_perf": struts_perf,
+            "struts_perf": struts_perf,
+            "struts/pala": struts_per_blade,
                 "v_cut_in": v_cut_in,
                 "v_rated": v_rated,
                 "v_cut_out": v_cut_out,
@@ -4291,6 +5609,9 @@ with colE2:
             # Curvas eléctricas para el generador
             "T_gen": df["T_gen (N·m)"].values.tolist(),
             "I_est": df["I_est (A)"].values.tolist(),
+            "a_cen_g": df["a_cen (g)"].values.tolist(),
+            "M_strut_kNm": df["M_por_strut (kN·m)"].values.tolist(),
+            "M_base_kNm": df["M_base (kN·m)"].values.tolist(),
 
             # KPIs energéticos
             "AEP_kWh": float(AEP_kWh),
@@ -4301,10 +5622,14 @@ with colE2:
             "max_T_gen": float(max_T_gen),
             "max_T_rotor": float(max_T_rotor),
             "max_I_est": float(max_I_est),
+            "max_M_base": float(max_M_base),
+            "max_a_cen_g": float(max_g_pala),
             "margen_Tgen_nom": float(margen_Tgen_nom),
             "margen_Trot_iec": float(margen_Trot_iec),
             "margen_I": float(margen_I),
             "margen_P": float(margen_P),
+            "margen_g": float(margen_g),
+            "margen_M": float(margen_M),
         }
 
         st.session_state["escenarios"].append(escenario)
@@ -4312,7 +5637,7 @@ with colE2:
 
 # Mostrar listado resumen de escenarios guardados
 if st.session_state["escenarios"]:
-    st.markdown("#### Escenarios guardados en sesión")
+    section_header("Escenarios guardados en sesión", level=3)
     for i, esc in enumerate(st.session_state["escenarios"], start=1):
         st.markdown(
             f"- **{i}. {esc['nombre']}** "
@@ -4329,7 +5654,7 @@ if st.session_state["escenarios"]:
 if len(st.session_state["escenarios"]) < 2:
     st.info("Guarda al menos **dos escenarios** para habilitar el comparador A vs B.")
 else:
-    st.markdown("### ⚖️ Comparar dos escenarios")
+    section_header("⚖️ Comparar dos escenarios")
 
     nombres = [e["nombre"] for e in st.session_state["escenarios"]]
 
@@ -4485,7 +5810,7 @@ else:
         # =======================
         # Márgenes IEC / esfuerzo del generador
         # =======================
-        st.markdown("#### Márgenes de diseño (par, corriente, potencia)")
+        section_header("Márgenes de diseño (par, corriente, potencia)", level=3)
 
         colM1, colM2, colM3 = st.columns(3)
         colM1.metric(
@@ -4522,7 +5847,7 @@ else:
         # =======================
         # Gráfico 1: P_out(kW)
         # =======================
-        st.markdown("#### Curva de potencia eléctrica P_out(kW) vs viento")
+        section_header("Curva de potencia eléctrica P_out(kW) vs viento", level=3)
 
         df_comp_P = pd.DataFrame({
             "v (m/s)": v_common,
@@ -4549,7 +5874,7 @@ else:
         # =======================
         # Gráfico 2: Cp_el_equiv
         # =======================
-        st.markdown("#### Cp_el_equiv (eficiencia global viento → eléctrica)")
+        section_header("Cp_el_equiv (eficiencia global viento → eléctrica)", level=3)
 
         df_comp_Cp = pd.DataFrame({
             "v (m/s)": v_common,
@@ -4576,7 +5901,7 @@ else:
         # =======================
         # Gráfico 3: Torque rotor
         # =======================
-        st.markdown("#### Torque en rotor (N·m) – impacto estructural")
+        section_header("Torque en rotor (N·m) – impacto estructural", level=3)
 
         df_comp_T = pd.DataFrame({
             "v (m/s)": v_common,
@@ -4603,7 +5928,7 @@ else:
         # =======================
         # Gráfico 4: Torque generador
         # =======================
-        st.markdown("#### Torque en generador (N·m) – esfuerzo en el eje rápido")
+        section_header("Torque en generador (N·m) – esfuerzo en el eje rápido", level=3)
 
         Tgen_A = np.array(escA["T_gen"])
         Tgen_B = np.array(escB["T_gen"])
@@ -4633,7 +5958,7 @@ else:
         # =======================
         # Gráfico 5: Corriente estimada
         # =======================
-        st.markdown("#### Corriente estimada en generador (A)")
+        section_header("Corriente estimada en generador (A)", level=3)
 
         I_A = np.array(escA["I_est"])
         I_B = np.array(escB["I_est"])
@@ -4665,22 +5990,140 @@ else:
         <div class="comment-box">
           <div class="comment-title">🔍 Interpretación técnica (comparador A vs B)</div>
           <p>
-          El comparador permite evaluar compromisos entre escenarios:
+            Usa el comparador para decidir qué escenario escala mejor:
           </p>
           <ul>
-            <li>Si <strong>{escB_name}</strong> entrega mayor AEP y CF, pero también incrementa el 
-            <em>torque máximo</em> del rotor o del generador, puede requerir una estructura 
-            y un tren de potencia más robustos.</li>
-            <li>Las diferencias en <strong>Cp_el_equiv</strong> muestran si la mejora viene de la aerodinámica 
-            y del tren de potencia, o solo de subir P_nominal.</li>
-            <li>Las curvas de <strong>I_est(A)</strong> permiten ver en qué rango de vientos se 
-            tensionan más las corrientes y si alguno de los escenarios se acerca demasiado a I_nom.</li>
-            <li>Comparar <strong>P_out(kW)</strong> vs viento permite ver en qué rango de velocidades
-            realmente se gana energía entre configuraciones (helicoidal vs no helicoidal, G distinta, 
-            generador distinto, etc.).</li>
+            <li>Si <strong>{escB_name}</strong> gana AEP pero empuja <strong>T_rotor</strong> o <strong>T_gen</strong> sobre IEC, solo vale la pena si aceptas reforzar la estructura.</li>
+            <li>Compara <strong>Cp_el_equiv</strong>: si la mejora viene solo de subir P_nom sin subir Cp, terminarás clippeando antes.</li>
+            <li>Revisa <strong>I_est</strong>: un escenario que llega menos tiempo a I_nom libera presupuesto en cables e inversor.</li>
+            <li>La curva de <strong>P_out</strong> te dice en qué bins ganas energía; si la diferencia está solo en vientos raros, prioriza el escenario con menores cargas.</li>
           </ul>
         </div>
         """, unsafe_allow_html=True)
+
+
+
+# =========================================================
+
+# Recomendaciones dinámicas
+# =========================================================
+
+# 1) Construimos la lista 'bullets' en función de los resultados
+bullets = []
+
+# Arranque / cut-in
+if v_cut_in > 3.5:
+    bullets.append(
+        f"Arranque: v_cut-in = {v_cut_in:.1f} m/s es algo alta; evalúa bajar a 3–3.5 m/s "
+        "con más solidez o apoyo Savonius/kick para mejorar energía en vientos bajos."
+    )
+else:
+    bullets.append(
+        f"Arranque: v_cut-in = {v_cut_in:.1f} m/s es adecuada para capturar energía en vientos bajos "
+        "sin penalizar demasiado el par de arranque."
+    )
+
+# Solidez / Cp
+if sig_conv < 0.22:
+    bullets.append(
+        f"Solidez: σ_conv ≈ {sig_conv:.2f} indica un rotor liviano; podrías subir ligeramente c o N "
+        "para ganar Cp en rangos medios de viento."
+    )
+elif sig_conv > 0.30:
+    bullets.append(
+        f"Solidez: σ_conv ≈ {sig_conv:.2f} es alta; revisa cargas inerciales y par en arranque, "
+        "porque el rotor puede volverse pesado para rpm bajas."
+    )
+else:
+    bullets.append(
+        f"Solidez: σ_conv ≈ {sig_conv:.2f} está en el rango 0.22–0.30, razonable para un VAWT de potencia."
+    )
+
+# Eficiencias
+if eta_mec < 0.95:
+    bullets.append(
+        f"Eficiencia mecánica: η_mec ≈ {eta_mec:.3f}; conviene revisar pérdidas en rodamientos y caja "
+        "porque podrías estar perdiendo varios puntos de rendimiento antes del generador."
+    )
+else:
+    bullets.append(
+        f"Eficiencia mecánica: η_mec ≈ {eta_mec:.3f} es buena para un tren de potencia con caja de engranajes."
+    )
+
+if eta_elec < 0.97:
+    bullets.append(
+        f"Eficiencia electrónica: η_elec ≈ {eta_elec:.3f}; considera equipos más eficientes o mejor ajuste de PF "
+        "si el proyecto es muy sensible al LCOE."
+    )
+
+# Factor de planta / AEP
+if CF < 0.20:
+    bullets.append(
+        f"Factor de planta: FP ≈ {CF*100:.1f}% es algo bajo; revisa ajuste entre Weibull del sitio, "
+        "v_rated y potencia nominal para mejorar utilización anual."
+    )
+else:
+    bullets.append(
+        f"Factor de planta: FP ≈ {CF*100:.1f}% es razonable; el dimensionamiento entre viento del sitio y "
+        "potencia nominal parece coherente."
+    )
+# Curvas respecto al viento / TSR / rpm (fundamento IEC)
+bullets.append(
+    "Curvas respecto al viento: una turbina no se diseña con rpm como entrada; "
+    "las rpm son un resultado directo del TSR y de la velocidad del viento. "
+    "Por norma internacional (IEC 61400-12-1 e IEC 61400-2), la potencia, el par, el Cp, "
+    "las pérdidas y las rpm deben expresarse en función del viento, porque es la variable "
+    "física primaria que gobierna el comportamiento del aerogenerador y la única referencia "
+    "universal para comparar turbinas, validar rendimiento y certificar la curva de potencia."
+)
+
+# Si por alguna razón no se generó nada:
+if not bullets:
+    bullets.append(
+        "Configuración del piloto consistente; se recomienda validar en sitio con mediciones "
+        "de viento y curvas del generador antes de congelar diseño."
+    )
+
+# 2) Caja completa: recomendaciones + fórmulas
+st.markdown("""
+<div class="rec-wrapper">
+  <div class="rec-header">
+    <div class="rec-header-icon">🛠️</div>
+    <div>
+      <div class="rec-header-chip">Salida automática del modelo</div>
+      <div class="rec-header-text-main">Recomendaciones para el piloto</div>
+    </div>
+  </div>
+""", unsafe_allow_html=True)
+
+# Recomendaciones (usamos la lista 'bullets')
+for b in bullets:
+    st.markdown(f"<div class='rec-item'>{b}</div>", unsafe_allow_html=True)
+
+# === Caja de fórmulas en dos columnas (versión Streamlit) ===
+
+# Cabecera con el mismo look de caja
+st.markdown("""
+<div class="formula-box">
+    <div class="formula-title">🧮 Fórmulas clave</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Dos columnas reales de Streamlit
+col1, col2 = st.columns(2)
+
+# ----------- COLUMNA IZQUIERDA ----------
+with col1:
+    st.latex(r"\bullet\ \text{TSR: }\lambda = \dfrac{\omega R}{v} = \dfrac{U_{\text{tip}}}{v}")
+    st.latex(r"\bullet\ \text{rpm (rotor): }\text{rpm} = \dfrac{30}{\pi R}\,\lambda\,v")
+    st.latex(r"\bullet\ \text{Potencia aerodinámica: }P_a = \dfrac{1}{2}\rho A v^{3} C_p(\lambda)")
+    st.latex(r"\bullet\ \text{Par: }T = \dfrac{P}{\omega}")
+
+# ----------- COLUMNA DERECHA ----------
+with col2:
+    st.latex(r"\bullet\ \text{Frecuencia eléctrica: }f_e = \dfrac{P_{\text{polos}}}{2}\,\dfrac{\text{rpm}_{gen}}{60}")
+    st.latex(r"\bullet\ \text{Corriente trifásica (aprox.): }I \approx \dfrac{P}{\sqrt{3}\,V_{LL}\,PF}")
+    st.latex(r"\bullet\ \text{Reynolds pala: }Re \approx \dfrac{\rho\,U_{\text{tip}}\,c}{\mu}")
 
 
 
@@ -4703,24 +6146,26 @@ if dominio_pot == "Potencias vs viento (recomendada)":
 else:
     fig_pot = figG
 
-# --- Diccionario de figuras para el reporte ---
-figs_report = {
-    "rpm rotor / generador vs velocidad de viento": fig_r,
-    "Curva de potencia (según vista seleccionada)": fig_pot,
-    "Cp equivalente por etapa": fig_cp_eq,
-    "Pérdidas por etapa": fig_loss,
-    "Par en rotor / generador": figT,
-    "Corriente estimada vs velocidad de viento": figI,
-    "Frecuencias 1P / 3P del rotor": figF,
-    "Curva Cp(λ) – promedio y componentes": fig_cp,
-}
+# --- Selección priorizada de figuras para el reporte (ordenada) ---
+figs_report = [
+    ("rpm rotor / generador vs velocidad de viento", fig_r),
+    ("Curva de potencia (según vista seleccionada)", fig_pot),
+    ("Par en rotor / generador", figT),
+    ("Momento flector en unión pala–struts", fig_mbase),
+    ("Corriente estimada vs velocidad de viento", figI),
+    ("Cp equivalente por etapa", fig_cp_eq),
+    ("Pérdidas por etapa", fig_loss),
+    ("Frecuencias 1P / 3P del rotor", figF),
+    ("Curva Cp(λ) – promedio y componentes", fig_cp),
+    ("🌬️ Distribución de viento vs curva de potencia", figW),
+]
 
 
 # -------------------------------------------------------
 # Construcción diccionario de figuras
 # -------------------------------------------------------
 if use_noise:
-    figs_report["Ruido estimado vs velocidad de viento"] = figNoise
+    figs_report.append(("Ruido estimado vs velocidad de viento", figNoise))
 
 # -------------------------------------------------------
 # Botón para generar PDF
@@ -4735,3 +6180,188 @@ if st.button("Generar reporte PDF"):
         mime="application/pdf",
         key="descargar_pdf_tecnico_vawt"   # 🔑 clave única
     )
+
+# NUEVO: Calibración modelo vs datos piloto (SCADA)
+# =========================================================
+st.subheader("🧪 Calibración modelo vs datos piloto (SCADA)")
+question_prompt("¿Qué métrica de ajuste (Bias, RMSE o R²) debe mejorar para aceptar que el modelo representa al piloto en campo?")
+
+df_scada = st.session_state.get("df_scada_raw", None)
+scada_map = st.session_state.get("scada_map", None)
+
+if df_scada is None or scada_map is None:
+    st.info(
+        "Sube un CSV en el panel lateral (expander 'Datos piloto (SCADA)') "
+        "para comparar el modelo con las mediciones del piloto."
+    )
+else:
+    # Limpieza básica
+    df_sc = df_scada.copy()
+
+    v_col = scada_map["v"]
+    P_col = scada_map["P"]
+
+    # El modelo está en df con 'v (m/s)' y 'P_out (clip) kW'
+    v_meas = df_sc[v_col].astype(float).values
+    P_meas = df_sc[P_col].astype(float).values
+
+    # Interpolamos la potencia modelo en las velocidades medidas
+    P_model = np.interp(
+        v_meas,
+        df["v (m/s)"].values,
+        df["P_out (clip) kW"].values,
+        left=0.0,
+        right=0.0,
+    )
+
+    # Cálculo de métricas de ajuste
+    mask_valid = ~np.isnan(P_meas) & ~np.isnan(P_model)
+    if mask_valid.sum() > 3:
+        err = P_model[mask_valid] - P_meas[mask_valid]
+        bias = np.mean(err)
+        rmse = np.sqrt(np.mean(err**2))
+        ss_res = np.sum((P_meas[mask_valid] - P_model[mask_valid])**2)
+        ss_tot = np.sum((P_meas[mask_valid] - np.mean(P_meas[mask_valid]))**2)
+        r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+    else:
+        bias = rmse = r2 = np.nan
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Bias modelo - medida [kW]", f"{bias:,.2f}")
+    c2.metric("RMSE [kW]", f"{rmse:,.2f}")
+    c3.metric("R² ajuste", f"{r2:,.2f}")
+
+    st.caption(
+        "Bias > 0 indica que el modelo sobreestima la potencia respecto al piloto; "
+        "Bias < 0 indica subestimación. RMSE resume el error típico por punto, y R² "
+        "qué tan bien el modelo explica la variabilidad de las mediciones."
+    )
+
+    # ---------------- Gráfico 1: v vs Potencia ----------------
+    section_header("Potencia eléctrica: modelo vs piloto", level=3)
+
+    df_plotP = pd.DataFrame({
+        "v (m/s)": v_meas,
+        "P_meas (kW)": P_meas,
+        "P_model (kW)": P_model,
+    })
+
+    fig_scada_P = px.scatter(
+        df_plotP,
+        x="v (m/s)",
+        y="P_meas (kW)",
+        opacity=0.7,
+        labels={"P_meas (kW)": "Potencia medida [kW]"},
+        title="Potencia medida vs modelo",
+    )
+    # Agregamos la curva modelo suavizada vs viento
+    fig_scada_P.add_trace(
+        go.Scatter(
+            x=df["v (m/s)"],
+            y=df["P_out (clip) kW"],
+            mode="lines",
+            name="P_model curva",
+        )
+    )
+    fig_scada_P.update_layout(
+        legend_title="Serie",
+        xaxis_title="v (m/s)",
+        yaxis_title="Potencia [kW]",
+    )
+    st.plotly_chart(fig_scada_P, use_container_width=True)
+
+    # ---------------- Gráfico 2: rpm rotor ----------------
+    rpm_rotor_col = scada_map.get("rpm_rotor", None)
+    if rpm_rotor_col is not None:
+        section_header("rpm rotor: modelo vs piloto", level=3)
+
+        rpm_meas = df_sc[rpm_rotor_col].astype(float).values
+        rpm_model = np.interp(
+            v_meas,
+            df["v (m/s)"].values,
+            df["rpm_rotor"].values,
+            left=0.0,
+            right=0.0,
+        )
+        df_plotR = pd.DataFrame({
+            "v (m/s)": v_meas,
+            "rpm_meas": rpm_meas,
+            "rpm_model": rpm_model,
+        })
+
+        fig_scada_R = px.scatter(
+            df_plotR,
+            x="v (m/s)",
+            y="rpm_meas",
+            opacity=0.7,
+            labels={"rpm_meas": "rpm rotor medida"},
+            title="rpm rotor medida vs modelo",
+        )
+        fig_scada_R.add_trace(
+            go.Scatter(
+                x=df["v (m/s)"],
+                y=df["rpm_rotor"],
+                mode="lines",
+                name="rpm_rotor modelo",
+            )
+        )
+        fig_scada_R.update_layout(
+            xaxis_title="v (m/s)",
+            yaxis_title="rpm rotor",
+        )
+        st.plotly_chart(fig_scada_R, use_container_width=True)
+
+    # ---------------- Gráfico 3: corriente ----------------
+    I_col = scada_map.get("I", None)
+    if I_col is not None:
+        section_header("Corriente: modelo vs piloto", level=3)
+
+        I_meas = df_sc[I_col].astype(float).values
+        I_model = np.interp(
+            v_meas,
+            df["v (m/s)"].values,
+            df["I_est (A)"].values,
+            left=0.0,
+            right=0.0,
+        )
+        df_plotI = pd.DataFrame({
+            "v (m/s)": v_meas,
+            "I_meas (A)": I_meas,
+            "I_model (A)": I_model,
+        })
+
+        fig_scada_I = px.scatter(
+            df_plotI,
+            x="v (m/s)",
+            y="I_meas (A)",
+            opacity=0.7,
+            labels={"I_meas (A)": "Corriente medida [A]"},
+            title="Corriente medida vs modelo",
+        )
+        fig_scada_I.add_trace(
+            go.Scatter(
+                x=df["v (m/s)"],
+                y=df["I_est (A)"],
+                mode="lines",
+                name="I_model curva",
+            )
+        )
+        fig_scada_I.update_layout(
+            xaxis_title="v (m/s)",
+            yaxis_title="Corriente [A]",
+        )
+        st.plotly_chart(fig_scada_I, use_container_width=True)
+
+    st.markdown("""
+    <div class="comment-box">
+      <div class="comment-title">🔍 Interpretación técnica (calibración)</div>
+      <p>
+        Si el <strong>Bias</strong> es positivo estás sobrestimando potencia: ajusta Cp(λ) o pérdidas hasta que quede dentro de ±5&nbsp;%.
+        Un <strong>RMSE</strong> alto en vientos medios indica que el MPPT o la curva del generador no replican al piloto; vuelve a calibrar G o la curva P–rpm.
+      </p>
+      <p>
+        Exige <strong>R²</strong> &gt; 0.9 antes de liberar el modelo; valores menores significan que falta capturar algún mecanismo (clipping, turbulencia o histeresis).
+        Usa los gráficos por variable para ver en qué bin se separa y corrige ese módulo antes de la siguiente campaña.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)

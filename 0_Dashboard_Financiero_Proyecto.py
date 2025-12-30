@@ -690,6 +690,8 @@ def render_sm_kpi_cards(tabla_sm):
     cards.append("</div>")
     st.markdown("".join(cards), unsafe_allow_html=True)
 
+    
+
 # ============================
 # Flujo principal
 # ============================

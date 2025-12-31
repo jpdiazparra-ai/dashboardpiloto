@@ -1340,7 +1340,8 @@ with st.sidebar:
             step=0.1,
             help="Usado como referencia para sombrear los gráficos de stress."
         )
-        with st.expander("Guías y rangos sugeridos", expanded=False):
+        show_guides = st.checkbox("Mostrar guías y rangos sugeridos", value=False)
+        if show_guides:
             st.markdown("""
 **Raíz FRP / aluminio (pilotos 10–60 kW)**
 - Módulo resistente W: 0.04–0.10 m³ según espesor del laminado.

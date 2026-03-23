@@ -300,6 +300,11 @@ def load_valorizacion_data(url: str) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=True, ttl=120)
+def load_valorizacion_raw_data(url: str) -> pd.DataFrame:
+    return pd.read_csv(url, dtype=str, header=None)
+
+
+@st.cache_data(show_spinner=True, ttl=120)
 def load_eerrv2_data(url: str) -> pd.DataFrame:
     return pd.read_csv(url, dtype=str, header=None)
 
@@ -354,7 +359,7 @@ def format_compact_usd(value: float) -> str:
     return format_usd(value)
 
 
-def style_engineering_table(df: pd.DataFrame, header_color: str = "#2C5783", row_color: str = "#E7F1E8"):
+def style_engineering_table(df: pd.DataFrame, header_color: str = "#2C5783", row_color: str = "#EAF6FF"):
     return (
         df.style
         .set_properties(**{
@@ -451,6 +456,14 @@ def get_valorizacion_model_map(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     model_df = model_df.dropna(subset=["Label"]).reset_index(drop=True)
     model_map = {normalize_key(row["Label"]): row["Value"] for _, row in model_df.iterrows()}
     return model_df, model_map
+
+
+def get_first_model_value(model_map: dict, candidates: list[str], default=0.0) -> float:
+    for candidate in candidates:
+        key = normalize_key(candidate)
+        if key in model_map:
+            return parse_model_number(model_map.get(key))
+    return float(default)
 
 
 def build_direccion_mensual(df_dir: pd.DataFrame, horizonte_meses: int = 15) -> pd.DataFrame:
@@ -1960,15 +1973,21 @@ st.markdown(
         color: #9CA3AF;
         margin-top: 0.15rem;
     }
+    .kpi-card.kpi-card-sky {
+        background: linear-gradient(90deg, #EFF8FF 0%, #DFF4FF 42%, #C6ECFF 100%);
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-def kpi_card(title: str, value: str, subtitle: str = ""):
+def kpi_card(title: str, value: str, subtitle: str = "", variant: str = "default"):
     """Renderiza una tarjeta KPI con título, valor y subtítulo."""
+    card_class = "kpi-card"
+    if variant == "sky":
+        card_class += " kpi-card-sky"
     html = f"""
-    <div class="kpi-card">
+    <div class="{card_class}">
         <div class="kpi-label">{title}</div>
         <div class="kpi-value">{value}</div>
         <div class="kpi-sub">{subtitle}</div>
@@ -2699,13 +2718,48 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     multiple_default = 1.0
     captura_default = parse_model_percent(model_map.get("capturadelvalorpotencialpostpiloto", "100%"))
     ronda_pct_default = parse_model_percent(model_map.get("participacionobjetivoparanuevosinversionistas", "70%"))
+    widget_defaults = {
+        "fx": int(round(fx_default or 915)),
+        "pre_money": int(round(pre_money_actual_default)),
+        "inv_clp": int(round(inversion_clp_default)),
+        "volume": int(round(volumen_default)),
+        "ebitda_unit": int(round(ebitda_unit_default)),
+        "multiple": float(multiple_default or 1.0),
+        "ronda_pct": float((ronda_pct_default or 0.70) * 100.0),
+    }
     bloque_sel = st.session_state.get(state_block_key, bloque_cards[0][0])
+    shared_group = "base" if bloque_sel in {"1. Bases de valorización", "2. Revalorización post piloto"} else "post"
+
+    def shared_state_key(name: str, group: str | None = None) -> str:
+        active_group = group or shared_group
+        return widget_key(f"state_{active_group}_{name}")
+
+    def shared_widget_key(name: str, group: str | None = None) -> str:
+        active_group = group or shared_group
+        return widget_key(f"widget_{active_group}_{name}")
+
+    def prime_widget(name: str, group: str | None = None) -> str:
+        active_group = group or shared_group
+        state_key = shared_state_key(name, active_group)
+        widget_state_key = shared_widget_key(name, active_group)
+        if widget_state_key not in st.session_state:
+            st.session_state[widget_state_key] = st.session_state[state_key]
+        return widget_state_key
+
+    def sync_widget_to_state(name: str, group: str | None = None):
+        active_group = group or shared_group
+        st.session_state[shared_state_key(name, active_group)] = st.session_state[shared_widget_key(name, active_group)]
+
+    for group_name in ("base", "post"):
+        for name, default_value in widget_defaults.items():
+            if shared_state_key(name, group_name) not in st.session_state:
+                st.session_state[shared_state_key(name, group_name)] = default_value
 
     if bloque_sel == "1. Bases de valorización":
-        pre_money_preview = float(st.session_state.get(widget_key("pre_money"), pre_money_actual_default))
-        volume_preview = float(st.session_state.get(widget_key("volume"), volumen_default))
-        ebitda_unit_preview = float(st.session_state.get(widget_key("ebitda_unit"), ebitda_unit_default))
-        multiple_preview = float(st.session_state.get(widget_key("multiple"), multiple_default or 5))
+        pre_money_preview = float(st.session_state.get(shared_state_key("pre_money", "base"), pre_money_actual_default))
+        volume_preview = float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
+        ebitda_unit_preview = float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
+        multiple_preview = float(st.session_state.get(shared_state_key("multiple", "base"), multiple_default or 1))
         valorizacion_fluxial_preview = pre_money_preview + (volume_preview * ebitda_unit_preview * multiple_preview)
         st.markdown("---")
         solo_kpi = st.columns(1)[0]
@@ -2717,101 +2771,132 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             )
 
     st.markdown("---")
-    st.subheader("Supuestos Clave del Modelo de Valorización")
+    sh_col, reset_col = st.columns([1, 0.24])
+    with sh_col:
+        st.subheader("Supuestos Clave del Modelo de Valorización")
+    with reset_col:
+        if st.button("↺ Restablecer supuestos", key=widget_key("reset_supuestos"), use_container_width=True):
+            for group_name in ("base", "post"):
+                for name, default_value in widget_defaults.items():
+                    st.session_state[shared_state_key(name, group_name)] = default_value
+                    st.session_state.pop(shared_widget_key(name, group_name), None)
 
     if bloque_sel == "1. Bases de valorización":
         pcol1, pcol2, pcol3, pcol4 = st.columns(4)
         with pcol1:
-            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(round(fx_default or 915)), step=1, format="%d", key=widget_key("fx"))
+            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
             render_input_thousands_hint(fx_input)
         with pcol2:
-            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(round(pre_money_actual_default)), step=50000, format="%d", key=widget_key("pre_money"))
+            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(st.session_state[shared_state_key("pre_money")]), step=50000, format="%d", key=prime_widget("pre_money"), on_change=sync_widget_to_state, args=("pre_money",))
             render_input_thousands_hint(pre_money_input, "US$")
         with pcol3:
-            volume_input = st.number_input("Volumen comercial", min_value=0, value=int(round(volumen_default)), step=1, format="%d", key=widget_key("volume"))
+            volume_input = st.number_input("Volumen comercial", min_value=0, value=int(st.session_state[shared_state_key("volume")]), step=1, format="%d", key=prime_widget("volume"), on_change=sync_widget_to_state, args=("volume",))
             render_input_thousands_hint(volume_input)
         with pcol4:
-            ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(round(ebitda_unit_default)), step=1000, format="%d", key=widget_key("ebitda_unit"))
+            ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(st.session_state[shared_state_key("ebitda_unit")]), step=1000, format="%d", key=prime_widget("ebitda_unit"), on_change=sync_widget_to_state, args=("ebitda_unit",))
             render_input_thousands_hint(ebitda_unit_input, "US$")
         with st.columns(1)[0]:
-            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(multiple_default or 5), step=0.5, key=widget_key("multiple"))
-        inversion_clp_input = float(inversion_clp_default)
+            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
+        inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
         captura_input = float(captura_default or 1.0)
-        ronda_pct_input = float(ronda_pct_default or 0.70)
+        ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
     elif bloque_sel == "2. Revalorización post piloto":
         pcol1, pcol2, pcol3 = st.columns(3)
         with pcol1:
-            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(round(fx_default or 915)), step=1, format="%d", key=widget_key("fx"))
+            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
             render_input_thousands_hint(fx_input)
         with pcol2:
-            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(round(pre_money_actual_default)), step=50000, format="%d", key=widget_key("pre_money"))
+            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(st.session_state[shared_state_key("pre_money")]), step=50000, format="%d", key=prime_widget("pre_money"), on_change=sync_widget_to_state, args=("pre_money",))
             render_input_thousands_hint(pre_money_input, "US$")
         with pcol3:
-            inversion_clp_input = st.number_input("Inversión piloto (CLP)", min_value=0, value=int(round(inversion_clp_default)), step=10000000, format="%d", key=widget_key("inv_clp"))
+            inversion_clp_input = st.number_input("Inversión piloto (CLP)", min_value=0, value=int(st.session_state[shared_state_key("inv_clp")]), step=10000000, format="%d", key=prime_widget("inv_clp"), on_change=sync_widget_to_state, args=("inv_clp",))
             render_input_thousands_hint(inversion_clp_input, "$")
-        volume_input = float(volumen_default)
-        ebitda_unit_input = float(ebitda_unit_default)
-        multiple_input = float(multiple_default or 5)
+        volume_input = float(st.session_state[shared_state_key("volume")])
+        ebitda_unit_input = float(st.session_state[shared_state_key("ebitda_unit")])
+        multiple_input = float(st.session_state[shared_state_key("multiple")])
         captura_input = float(captura_default or 1.0)
-        ronda_pct_input = float(ronda_pct_default or 0.70)
+        ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
     elif bloque_sel == "3. Valorización post piloto operativo":
         pcol1, pcol2, pcol3, pcol4 = st.columns(4)
         with pcol1:
-            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(round(pre_money_actual_default)), step=50000, format="%d", key=widget_key("pre_money"))
+            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(st.session_state[shared_state_key("pre_money")]), step=50000, format="%d", key=prime_widget("pre_money"), on_change=sync_widget_to_state, args=("pre_money",))
             render_input_thousands_hint(pre_money_input, "US$")
         with pcol2:
-            volume_input = st.number_input("Volumen comercial", min_value=0, value=int(round(volumen_default)), step=1, format="%d", key=widget_key("volume"))
+            volume_input = st.number_input("Volumen comercial", min_value=0, value=int(st.session_state[shared_state_key("volume")]), step=1, format="%d", key=prime_widget("volume"), on_change=sync_widget_to_state, args=("volume",))
             render_input_thousands_hint(volume_input)
         with pcol3:
-            ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(round(ebitda_unit_default)), step=1000, format="%d", key=widget_key("ebitda_unit"))
+            ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(st.session_state[shared_state_key("ebitda_unit")]), step=1000, format="%d", key=prime_widget("ebitda_unit"), on_change=sync_widget_to_state, args=("ebitda_unit",))
             render_input_thousands_hint(ebitda_unit_input, "US$")
         with pcol4:
-            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(multiple_default or 5), step=0.5, key=widget_key("multiple"))
+            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
         with st.columns(1)[0]:
-            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(round(fx_default or 915)), step=1, format="%d", key=widget_key("fx"))
+            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
             render_input_thousands_hint(fx_input)
         captura_input = float(captura_default or 1.0)
-        inversion_clp_input = float(inversion_clp_default)
-        ronda_pct_input = float(ronda_pct_default or 0.70)
+        inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
+        ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
     else:
         pcol1, pcol2, pcol3 = st.columns(3)
         with pcol1:
-            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(round(fx_default or 915)), step=1, format="%d", key=widget_key("fx"))
+            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
             render_input_thousands_hint(fx_input)
         with pcol2:
-            pre_money_input = st.number_input("Pre-money base Serie B (USD)", min_value=0, value=int(round(pre_money_actual_default)), step=50000, format="%d", key=widget_key("pre_money"))
+            pre_money_input = st.number_input("Pre-money base Serie B (USD)", min_value=0, value=int(st.session_state[shared_state_key("pre_money")]), step=50000, format="%d", key=prime_widget("pre_money"), on_change=sync_widget_to_state, args=("pre_money",))
             render_input_thousands_hint(pre_money_input, "US$")
         with pcol3:
-            ronda_pct_input = st.slider("Nueva cesión Serie B", min_value=5.0, max_value=90.0, value=float((ronda_pct_default or 0.70) * 100.0), step=1.0, format="%.0f%%", key=widget_key("ronda_pct")) / 100.0
+            ronda_pct_input = st.slider("Nueva cesión Serie B", min_value=5.0, max_value=90.0, value=float(st.session_state[shared_state_key("ronda_pct")]), step=1.0, format="%.0f%%", key=prime_widget("ronda_pct"), on_change=sync_widget_to_state, args=("ronda_pct",)) / 100.0
         pcol4, pcol5, pcol6 = st.columns(3)
         with pcol4:
-            volume_input = st.number_input("Volumen comercial", min_value=0, value=int(round(volumen_default)), step=1, format="%d", key=widget_key("volume"))
+            volume_input = st.number_input("Volumen comercial", min_value=0, value=int(st.session_state[shared_state_key("volume")]), step=1, format="%d", key=prime_widget("volume"), on_change=sync_widget_to_state, args=("volume",))
             render_input_thousands_hint(volume_input)
         with pcol5:
-            ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(round(ebitda_unit_default)), step=1000, format="%d", key=widget_key("ebitda_unit"))
+            ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(st.session_state[shared_state_key("ebitda_unit")]), step=1000, format="%d", key=prime_widget("ebitda_unit"), on_change=sync_widget_to_state, args=("ebitda_unit",))
             render_input_thousands_hint(ebitda_unit_input, "US$")
         with pcol6:
-            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(multiple_default or 5), step=0.5, key=widget_key("multiple"))
+            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
         captura_input = float(captura_default or 1.0)
-        inversion_clp_input = float(inversion_clp_default)
+        inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
 
+    ebitda_potencial_ciclo_inicial = volume_input * ebitda_unit_input
+    ebitda_potencial_multiplicado = ebitda_potencial_ciclo_inicial * multiple_input
+    valorizacion_fluxial_hoy = pre_money_input + ebitda_potencial_multiplicado
     inversion_usd = inversion_clp_input / fx_input if fx_input > 0 else 0.0
-    post_money_serie_a = pre_money_input + inversion_usd
+    post_money_serie_a = valorizacion_fluxial_hoy
     imelsa_pct = (inversion_usd / post_money_serie_a) if post_money_serie_a > 0 else 0.0
     fluxial_pct = max(0.0, 1.0 - imelsa_pct)
-    ebitda_total = ebitda_unit_input * volume_input
-    valor_post_piloto = ebitda_total * multiple_input * captura_input
+
+    # Serie B must inherit the ownership mix coming from block 2 / Serie A.
+    base_fx_input = float(st.session_state.get(shared_state_key("fx", "base"), fx_default or 1))
+    base_pre_money_input = float(st.session_state.get(shared_state_key("pre_money", "base"), pre_money_actual_default))
+    base_volume_input = float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
+    base_ebitda_unit_input = float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
+    base_multiple_input = float(st.session_state.get(shared_state_key("multiple", "base"), multiple_default or 1))
+    base_inversion_clp_input = float(st.session_state.get(shared_state_key("inv_clp", "base"), inversion_clp_default))
+
+    base_ebitda_potencial = base_volume_input * base_ebitda_unit_input * base_multiple_input
+    base_valorizacion_fluxial_hoy = base_pre_money_input + base_ebitda_potencial
+    base_inversion_usd = base_inversion_clp_input / base_fx_input if base_fx_input > 0 else 0.0
+    base_post_money_serie_a = base_valorizacion_fluxial_hoy
+    base_imelsa_pct = (base_inversion_usd / base_post_money_serie_a) if base_post_money_serie_a > 0 else 0.0
+    base_fluxial_pct = max(0.0, 1.0 - base_imelsa_pct)
+    ebitda_total = ebitda_potencial_ciclo_inicial
+    valor_post_piloto = ebitda_potencial_multiplicado * captura_input
     upside_pct = ((valor_post_piloto / pre_money_input) - 1.0) if pre_money_input > 0 else 0.0
     valor_imelsa_post = valor_post_piloto * imelsa_pct
     capital_raise = valor_post_piloto * ronda_pct_input
     post_money_serie_b = valor_post_piloto + capital_raise
     pct_remanente = 1.0 - ronda_pct_input
-    fluxial_post_b = fluxial_pct * pct_remanente
-    imelsa_post_b = imelsa_pct * pct_remanente
+    socios_actuales_total_pct = base_fluxial_pct + base_imelsa_pct
+    if socios_actuales_total_pct > 0:
+        fluxial_share_base = base_fluxial_pct / socios_actuales_total_pct
+        imelsa_share_base = base_imelsa_pct / socios_actuales_total_pct
+    else:
+        fluxial_share_base = 0.0
+        imelsa_share_base = 0.0
+    fluxial_post_b = pct_remanente * fluxial_share_base
+    imelsa_post_b = pct_remanente * imelsa_share_base
     valor_fluxial_post_b = post_money_serie_b * fluxial_post_b
     valor_imelsa_post_b = post_money_serie_b * imelsa_post_b
-    ebitda_potencial_ciclo_inicial = volume_input * ebitda_unit_input
-    valorizacion_fluxial_hoy = pre_money_input + (ebitda_potencial_ciclo_inicial * multiple_input)
 
     if bloque_sel == "1. Bases de valorización":
         mk1, mk2, mk3 = st.columns(3)
@@ -2820,7 +2905,11 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         with mk2:
             kpi_card("Base en USD", format_usd(pre_money_input), "Total base inversión + know-how dividido por FX.")
         with mk3:
-            kpi_card("EBITDA potencial ciclo inicial", format_usd(ebitda_potencial_ciclo_inicial), "Volumen comercial multiplicado por EBITDA unitario.")
+            kpi_card(
+                "EBITDA potencial ciclo inicial",
+                format_usd(ebitda_potencial_multiplicado),
+                "Volumen comercial multiplicado por EBITDA unitario y por el múltiplo visible.",
+            )
 
         if eerrv2_error:
             st.error(f"No se pudo cargar EERRv2: {eerrv2_error}")
@@ -2832,7 +2921,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                 <style>
                 .eerr-mini{
                     border-radius:16px;padding:14px 15px;border:1px solid rgba(148,163,184,.22);
-                    background:linear-gradient(90deg,#ecfdf5 0%,#ffffff 100%);
+                    background:linear-gradient(90deg,#EFF8FF 0%,#DFF4FF 42%,#C6ECFF 100%);
                     min-height:132px;
                 }
                 .eerr-mini-h{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748B;margin-bottom:6px}
@@ -2855,28 +2944,80 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             kpi_data.columns = kpi_headers
             kpi_data = kpi_data.applymap(clean_sheet_cell)
             kpi_map = {clean_sheet_cell(row[kpi_headers[0]]): clean_sheet_cell(row[kpi_headers[1]]) for _, row in kpi_data.iterrows() if clean_sheet_cell(row[kpi_headers[0]])}
+            precio_venta_turbina = get_first_model_value(
+                model_map,
+                [
+                    "Precio venta / turbina",
+                    "Precio venta/turbina",
+                    "Precio venta turbina",
+                ],
+            )
+            costo_estimado_turbina = get_first_model_value(
+                model_map,
+                [
+                    "Costo estimado / turbina",
+                    "Costo estimado/turbina",
+                    "Costo estimado turbina",
+                ],
+            )
+            ebitda_unitario_val = get_first_model_value(
+                model_map,
+                [
+                    "EBITDA unitario",
+                    "EBITDA unitario de referencia",
+                ],
+                default=ebitda_unit_default,
+            )
+            capex_inicial_eerr = parse_model_number(clean_sheet_cell(df_eerrv2.iloc[14, 2])) if df_eerrv2.shape[0] > 14 and df_eerrv2.shape[1] > 2 else 0.0
 
             eerr_numeric = eerr_data.copy()
             series_cols = [c for c in eerr_numeric.columns if c != "Partida"]
             for col in series_cols:
                 eerr_numeric[col] = eerr_numeric[col].apply(parse_model_number)
-            row_lookup = {clean_sheet_cell(r["Partida"]): r for _, r in eerr_numeric.iterrows()}
+            row_lookup = {normalize_key(clean_sheet_cell(r["Partida"])): r for _, r in eerr_numeric.iterrows()}
+            cash_numeric = cash_data.copy()
+            cash_series_cols = [c for c in cash_numeric.columns if c != "Partida"]
+            for col in cash_series_cols:
+                cash_numeric[col] = cash_numeric[col].apply(parse_model_number)
+            cash_row_lookup = {normalize_key(clean_sheet_cell(r["Partida"])): r for _, r in cash_numeric.iterrows()}
             years = [c for c in series_cols]
             chart_df = pd.DataFrame({"Año": years})
-            chart_df["Ingresos"] = [row_lookup.get("Ingresos (USD)", {}).get(y, 0.0) if isinstance(row_lookup.get("Ingresos (USD)", {}), pd.Series) else 0.0 for y in years]
-            chart_df["EBITDA"] = [row_lookup.get("EBITDA (USD)", {}).get(y, 0.0) if isinstance(row_lookup.get("EBITDA (USD)", {}), pd.Series) else 0.0 for y in years]
-            chart_df["Caja_neta"] = [row_lookup.get("Flujo de caja neto", {}).get(y, 0.0) if isinstance(row_lookup.get("Flujo de caja neto", {}), pd.Series) else 0.0 for y in years]
+            ingresos_row = row_lookup.get(normalize_key("Ingresos (USD)"), {})
+            ebitda_row = row_lookup.get(normalize_key("EBITDA (USD)"), {})
+            caja_row = cash_row_lookup.get(normalize_key("Flujo de caja neto"))
+            if not isinstance(caja_row, pd.Series):
+                caja_row = cash_row_lookup.get(normalize_key("Flujo caja neto"), {})
+            chart_df["Ingresos"] = [ingresos_row.get(y, 0.0) if isinstance(ingresos_row, pd.Series) else 0.0 for y in years]
+            chart_df["EBITDA"] = [ebitda_row.get(y, 0.0) if isinstance(ebitda_row, pd.Series) else 0.0 for y in years]
+            chart_df["Caja_neta"] = [caja_row.get(y, 0.0) if isinstance(caja_row, pd.Series) else 0.0 for y in years]
             chart_df["Ingresos_MM"] = chart_df["Ingresos"] / 1e6
             chart_df["EBITDA_MM"] = chart_df["EBITDA"] / 1e6
             chart_df["Caja_MM"] = chart_df["Caja_neta"] / 1e6
 
-            col_eerr_1, col_eerr_2 = st.columns([1.9, 1])
+            eerr_styler = style_engineering_table(eerr_data).apply(
+                lambda row: [
+                    "font-weight: 800;" if clean_sheet_cell(row.iloc[0]) in {"Margen bruto (USD)", "EBITDA (USD)"} else ""
+                    for _ in row
+                ],
+                axis=1,
+            )
+
+            col_eerr_1, col_eerr_2 = st.columns([1.7, 1])
             with col_eerr_1:
-                st.markdown("#### Proyección Financiera Integrada (EERR + CAPEX + Flujo de Caja)")
-                st.dataframe(style_engineering_table(eerr_data), hide_index=True, use_container_width=True, height=360)
+                st.markdown("#### Proyección Financiera Integrada - EERR")
+                st.dataframe(eerr_styler, hide_index=True, use_container_width=True, height=360)
             with col_eerr_2:
-                st.markdown("#### Indicadores Clave de Rentabilidad y Desempeño")
-                st.dataframe(style_engineering_table(kpi_data), hide_index=True, use_container_width=True, height=360)
+                st.markdown("#### Drivers unitarios del modelo")
+                drv_row_1 = st.columns(2)
+                with drv_row_1[0]:
+                    kpi_card("Precio venta / turbina", format_usd(precio_venta_turbina), "Supuesto comercial unitario del modelo.", variant="sky")
+                with drv_row_1[1]:
+                    kpi_card("Costo estimado / turbina", format_usd(costo_estimado_turbina), "Costo directo unitario usado en valorización.", variant="sky")
+                drv_row_2 = st.columns(2)
+                with drv_row_2[0]:
+                    kpi_card("EBITDA unitario", format_usd(ebitda_unitario_val), "Margen operativo unitario por turbina.", variant="sky")
+                with drv_row_2[1]:
+                    kpi_card("CAPEX inicial", format_usd(capex_inicial_eerr), "Valor base tomado de EERRv2 celda C15.", variant="sky")
 
             st.markdown("#### Flujo de Caja del Proyecto y Estrategia de Reinversión")
             st.dataframe(style_engineering_table(cash_data), hide_index=True, use_container_width=True, height=420)
@@ -3245,6 +3386,39 @@ input_block_copy = {
 if selected_input_block == "estado_actual":
     render_inputs_estado_actual_dashboard()
 elif selected_input_block == "escalamiento":
+    capital_recaudar_val = 0.0
+    try:
+        df_valorizacion_raw_kpi2 = load_valorizacion_raw_data(VALORIZACION_CSV_URL_DEFAULT)
+        if df_valorizacion_raw_kpi2.shape[0] > 19 and df_valorizacion_raw_kpi2.shape[1] > 6:
+            capital_recaudar_val = parse_model_number(clean_sheet_cell(df_valorizacion_raw_kpi2.iloc[19, 6]))
+    except Exception:
+        capital_recaudar_val = 0.0
+
+    if capital_recaudar_val <= 0:
+        try:
+            df_valorizacion_kpi2 = load_valorizacion_data(VALORIZACION_CSV_URL_DEFAULT)
+            _, model_map_kpi2 = get_valorizacion_model_map(df_valorizacion_kpi2)
+            capital_recaudar_val = get_first_model_value(
+                model_map_kpi2,
+                [
+                    "Capital a levantar",
+                    "Capital a recaudar",
+                    "Capital serie b",
+                    "Inversión para expansión",
+                ],
+            )
+        except Exception:
+            capital_recaudar_val = 0.0
+
+    capital_col = st.columns(1)[0]
+    with capital_col:
+        kpi_card(
+            "CAPITAL A RECAUDAR",
+            format_usd(capital_recaudar_val),
+            "Valor leído desde Valorización FW (referencia G20).",
+            variant="sky",
+        )
+
     input_dashboard_tab, input_capex_tab, input_direccion_tab, input_explorador_tab = st.tabs(
         ["📊 Dashboard general", "🏗️ Capex", "🧑‍💼 Dirección técnica", "🔍 Explorador interactivo"]
     )

@@ -993,15 +993,41 @@ def build_pdf_report(df_view, figs_dict, kpi_text=""):
 # =========================================================
 
 # --- GDG-1100 – 80 kW (lo que ya tenías) ---
-GDG_POWER_TABLE_80 = pd.DataFrame({
-    "rpm":  [  0,  24,  48,  72,  96, 120, 144, 168, 192, 216, 240, 264],
-    "P_kW": [  0,   2,   3,   7,  12,  19,  28,  38,  50,  64,  80,  97],
-})
+GDG_POWER_TABLE_80 = pd.DataFrame(
+    [
+        (0, 0),
+        (24, 2),
+        (48, 3),
+        (72, 7),
+        (96, 12),
+        (120, 19),
+        (144, 28),
+        (168, 38),
+        (192, 50),
+        (216, 64),
+        (240, 80),
+        (264, 97),
+    ],
+    columns=["rpm", "P_kW"],
+)
 
-GDG_VOLT_TABLE_80 = pd.DataFrame({
-    "rpm":  [  0,  24,  48,  72,  96, 120, 144, 168, 192, 216, 240, 264],
-    "V_LL": [  0,  40,  80, 120, 160, 200, 240, 280, 320, 360, 400, 440],
-})
+GDG_VOLT_TABLE_80 = pd.DataFrame(
+    [
+        (0, 0),
+        (24, 40),
+        (48, 80),
+        (72, 120),
+        (96, 160),
+        (120, 200),
+        (144, 240),
+        (168, 280),
+        (192, 320),
+        (216, 360),
+        (240, 400),
+        (264, 440),
+    ],
+    columns=["rpm", "V_LL"],
+)
 
 GDG_RATED_RPM_80   = 240.0
 GDG_RATED_PkW_80   = 80.0
@@ -1014,15 +1040,41 @@ GDG_KE_DEFAULT_80  = GDG_RATED_VLL_80 / GDG_OMEGA_RATED_80
 GDG_KT_DEFAULT_80  = GDG_RATED_T_Nm_80 / GDG_RATED_I_80
 
 # --- GDG-860 – 10 kW (desde la ficha adjunta) ---
-GDG_POWER_TABLE_10 = pd.DataFrame({
-    "rpm":  [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77],
-    "P_kW": [0, 0.2, 0.4, 0.9, 1.5, 2.4, 3.5, 4.7, 6.2, 8.0, 10.0, 12.1],
-})
+GDG_POWER_TABLE_10 = pd.DataFrame(
+    [
+        (0, 0),
+        (7, 0.2),
+        (14, 0.4),
+        (21, 0.9),
+        (28, 1.5),
+        (35, 2.4),
+        (42, 3.5),
+        (49, 4.7),
+        (56, 6.2),
+        (63, 8.0),
+        (70, 10.0),
+        (77, 12.1),
+    ],
+    columns=["rpm", "P_kW"],
+)
 
-GDG_VOLT_TABLE_10 = pd.DataFrame({
-    "rpm":  [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77],
-    "V_LL": [0, 40, 80, 120, 160, 200, 240, 280, 320, 360, 400, 440],
-})
+GDG_VOLT_TABLE_10 = pd.DataFrame(
+    [
+        (0, 0),
+        (7, 40),
+        (14, 80),
+        (21, 120),
+        (28, 160),
+        (35, 200),
+        (42, 240),
+        (49, 280),
+        (56, 320),
+        (63, 360),
+        (70, 400),
+        (77, 440),
+    ],
+    columns=["rpm", "V_LL"],
+)
 
 GDG_RATED_RPM_10   = 70.0
 GDG_RATED_PkW_10   = 10.0
@@ -1388,15 +1440,38 @@ with st.sidebar:
     # Operación / control
     with st.expander("Operación / Control", expanded=False):
 
-        lam_opt_ctrl = st.number_input(
-            "TSR objetivo λ (control)",
-            min_value=1.5,
-            max_value=5.0,
-            value=lam_ctrl_default,
-            step=0.01,
-            help="Setpoint MPPT utilizado para la ley rpm–v en Región 2. Por defecto igual al λ_opt estimado."
+        control_mode = st.radio(
+            "Modo de control",
+            options=["MPPT (λ constante)", "RPM fija (sin MPPT)"],
+            index=0,
+            help="MPPT mantiene λ≈constante en Región 2; sin MPPT usa rpm fija entre cut-in y cut-out.",
         )
-        tsr = lam_opt_ctrl  # este TSR se usa en las ecuaciones aero
+
+        if control_mode == "MPPT (λ constante)":
+            lam_opt_ctrl = st.number_input(
+                "TSR objetivo λ (control)",
+                min_value=1.5,
+                max_value=5.0,
+                value=lam_ctrl_default,
+                step=0.01,
+                help="Setpoint MPPT utilizado para la ley rpm–v en Región 2. Por defecto igual al λ_opt estimado."
+            )
+            tsr_ctrl = lam_opt_ctrl
+        else:
+            lam_opt_ctrl = lam_ctrl_default
+            tsr_ctrl = None
+            rpm_v_exp = st.slider(
+                "Exponente rpm vs viento (sin MPPT)",
+                min_value=0.50,
+                max_value=1.50,
+                value=0.85,
+                step=0.05,
+                help="rpm_gen ∝ (v/v_rated)^a. a=1 mantiene TSR casi constante; a≠1 hace variar TSR y Cp."
+            )
+            st.caption(
+                "Modo sin MPPT: la TSR y el Cp resultan de la velocidad del viento y la rpm fijada, "
+                "no de un setpoint constante."
+            )
 
         rho = st.number_input("Densidad aire ρ [kg/m³]", min_value=1.0, value=1.225, step=0.025)
         mu  = st.number_input(
@@ -1466,10 +1541,11 @@ with st.sidebar:
 """
         )
 
-        # rpm sugerida por aerodinámica
-        rpm_sugerida = float(rpm_from_tsr(v_rated, D, tsr))
+        # rpm sugerida por aerodinámica (referencia si no hay MPPT)
+        tsr_sugerida = lam_opt_ctrl if control_mode == "MPPT (λ constante)" else lam_ctrl_default
+        rpm_sugerida = float(rpm_from_tsr(v_rated, D, tsr_sugerida))
         st.caption(
-            f"rpm rotor rated sugerida por diseño aerodinámico (TSR y v_rated): "
+            f"rpm rotor rated sugerida por diseño aerodinámico (TSR ref y v_rated): "
             f"≈ **{rpm_sugerida:.1f} rpm**"
         )
 
@@ -1749,9 +1825,9 @@ cp_params = build_cp_params(
 lambda_opt_teo = cp_params["lam_opt"]
 
 # λ que usará el control MPPT para la ley rpm–v en región 2
-lambda_mppt = lam_opt_ctrl
+lambda_mppt = lam_opt_ctrl if control_mode == "MPPT (λ constante)" else None
 
-if abs(lambda_mppt - lambda_opt_teo) > 0.05:
+if control_mode == "MPPT (λ constante)" and abs(lambda_mppt - lambda_opt_teo) > 0.05:
     st.warning(
         f"λ_control ({lambda_mppt:.2f}) difiere del λ óptimo aerodinámico estimado ({lambda_opt_teo:.2f}). "
         "Operarás fuera de Cp_max a menos que alinees TSR de control y geometría."
@@ -1762,37 +1838,45 @@ if abs(lambda_mppt - lambda_opt_teo) > 0.05:
 v_grid = np.arange(v_min, v_max + 1e-9, 0.5 if v_max - v_min > 1 else 0.1)
 
 # Ley de operación por regiones:
-# En región MPPT usamos λ_mppt (igualado a λ_opt_teo para que el control sea óptimo).
-rpm_tsr = rpm_from_tsr(v_grid, D, lambda_mppt)
-rpm_rotor = np.zeros_like(v_grid)
-
-mask_reg2 = (v_grid >= v_cut_in) & (v_grid <= v_rated)
-rpm_rotor[mask_reg2] = rpm_tsr[mask_reg2]
+# En MPPT usamos λ_mppt (igualado a λ_opt_teo para que el control sea óptimo).
+if control_mode == "MPPT (λ constante)":
+    rpm_rotor = rpm_rotor_mppt(
+        v_array=v_grid,
+        D=D,
+        lam_opt=lam_opt_ctrl,
+        v_cut_in=v_cut_in,
+        v_rated=v_rated,
+        v_cut_out=v_cut_out,
+        rpm_rotor_rated=rpm_rotor_rated,
+    )
+    rpm_gen = rpm_rotor * G
+else:
+    # Sin MPPT: rpm_gen ∝ (v/v_rated)^a para forzar TSR variable.
+    rpm_gen = np.zeros_like(v_grid)
+    mask_reg2 = (v_grid >= v_cut_in) & (v_grid <= v_rated)
+    if v_rated > 0:
+        rpm_gen[mask_reg2] = rpm_gen_rated * (v_grid[mask_reg2] / v_rated) ** rpm_v_exp
+    mask_reg3 = (v_grid > v_rated) & (v_grid <= v_cut_out)
+    rpm_gen[mask_reg3] = rpm_gen_rated
+    rpm_rotor = rpm_gen / max(G, 1e-6)
 
 # rpm nominal coherente con el λ_mppt utilizado
-rpm_rated_val = rpm_from_tsr(v_rated, D, lambda_mppt)
-
-
-rpm_rotor = rpm_rotor_mppt(
-    v_array=v_grid,
-    D=D,
-    lam_opt=lam_opt_ctrl,
-    v_cut_in=v_cut_in,
-    v_rated=v_rated,
-    v_cut_out=v_cut_out,
-    rpm_rotor_rated=rpm_rotor_rated,
+rpm_rated_val = (
+    rpm_from_tsr(v_rated, D, lambda_mppt)
+    if lambda_mppt is not None
+    else np.nan
 )
 
 # Chequeo de consistencia entre rpm_rotor_rated y la ley MPPT en v_rated
-rpm_rated_ctrl = float(np.interp(v_rated, v_grid, rpm_rotor))
-if abs(rpm_rotor_rated - rpm_rated_ctrl) > 5:
-    st.warning(
-        f"⚠️ rpm_rotor_rated ({rpm_rotor_rated:.1f} rpm) difiere de la rpm MPPT @ v_rated "
-        f"({rpm_rated_ctrl:.1f} rpm). Revisa consistencia entre diseño aerodinámico, λ_opt y control MPPT."
-    )
+if control_mode == "MPPT (λ constante)":
+    rpm_rated_ctrl = float(np.interp(v_rated, v_grid, rpm_rotor))
+    if abs(rpm_rotor_rated - rpm_rated_ctrl) > 5:
+        st.warning(
+            f"⚠️ rpm_rotor_rated ({rpm_rotor_rated:.1f} rpm) difiere de la rpm MPPT @ v_rated "
+            f"({rpm_rated_ctrl:.1f} rpm). Revisa consistencia entre diseño aerodinámico, λ_opt y control MPPT."
+        )
 
 
-rpm_gen   = rpm_rotor * G
 omega_rot = 2 * pi * rpm_rotor / 60.0
 omega_gen = 2 * pi * rpm_gen   / 60.0
 
@@ -1801,6 +1885,12 @@ lambda_eff = np.zeros_like(v_grid, dtype=float)
 mask_v = v_grid > 0
 lambda_eff[mask_v] = (omega_rot[mask_v] * R) / v_grid[mask_v]
 U_tip = lambda_eff * v_grid
+
+# TSR de referencia para UI (setpoint MPPT o valor resultante @ v_rated)
+if control_mode == "MPPT (λ constante)":
+    tsr_ref = float(tsr_ctrl) if tsr_ctrl is not None else float(lambda_mppt)
+else:
+    tsr_ref = float(np.interp(v_rated, v_grid, lambda_eff)) if v_grid.size else np.nan
 
 # Potencias con Cp(λ_efectiva)
 P_aero_W, P_mec_gen_W, cp_used = power_to_generator(v_grid, D, H, lambda_eff, rho, eta_mec, cp_params)
@@ -1865,6 +1955,29 @@ else:
 
 # Potencia mecánica que realmente puede transmitir el eje rápido tras limitar par
 P_mec_to_gen_W = np.minimum(P_mec_gen_W, T_gen_Nm * omega_gen)
+
+# Control por regiones (similar a control de rpm): limita potencia en Región 3 y apaga fuera de operación
+mask_reg2_ctrl = (v_grid >= v_cut_in) & (v_grid <= v_rated)
+mask_reg3_ctrl = (v_grid > v_rated) & (v_grid <= v_cut_out)
+mask_off_ctrl  = (v_grid < v_cut_in) | (v_grid > v_cut_out)
+
+eta_chain = max(eta_gen_max * eta_elec, 1e-6)
+P_mec_cap_nom_W = (P_nom_kW * 1000.0) / eta_chain if P_nom_kW > 0 else np.inf
+P_mec_cap_curve_W = P_gen_curve_W / max(eta_gen_max, 1e-6)
+P_mec_cap_W = np.minimum(P_mec_cap_nom_W, P_mec_cap_curve_W)
+
+P_mec_to_gen_W = np.where(
+    mask_reg3_ctrl,
+    np.minimum(P_mec_to_gen_W, P_mec_cap_W),
+    P_mec_to_gen_W,
+)
+P_mec_to_gen_W = np.where(mask_off_ctrl, 0.0, P_mec_to_gen_W)
+
+# Actualizar par reportado con la potencia limitada por control
+T_gen_Nm = np.minimum(T_gen_Nm, np.divide(P_mec_to_gen_W, np.maximum(omega_gen, 1e-6)))
+
+# Usar potencia mecánica controlada como referencia de eje generador
+P_mec_gen_W = P_mec_to_gen_W.copy()
 
 # Retroalimentar límite al resto de etapas
 P_el_gen_W = np.minimum(P_mec_to_gen_W * eta_gen_max, P_gen_curve_W)
@@ -2116,7 +2229,13 @@ with tab_rotor:
             f"σ_conv ≈ {sig_conv:.2f} (N·c/(πR))"
         )
     with c3:
-        kpi_card("TSR objetivo λ", f"{tsr:.2f}", "Setpoint de control aerodinámico")
+        tsr_title = "TSR objetivo λ" if control_mode == "MPPT (λ constante)" else "TSR @ v_rated"
+        tsr_sub = (
+            "Setpoint de control aerodinámico"
+            if control_mode == "MPPT (λ constante)"
+            else "TSR resultante en nominal"
+        )
+        kpi_card(tsr_title, f"{tsr_ref:.2f}", tsr_sub)
 
     c4, c5, c6 = st.columns(3)
     with c4:
@@ -2209,7 +2328,7 @@ st.markdown(f"""
 <div class="comment-box">
   <div class="comment-title">📐 Especificaciones bajo revisión</div>
   <p>
-    D = {D:.1f} m, H = {H:.1f} m, N = {int(N)}, cuerda = {c:.2f} m, TSR objetivo = {tsr:.2f},
+    D = {D:.1f} m, H = {H:.1f} m, N = {int(N)}, cuerda = {c:.2f} m, TSR ref = {tsr_ref:.2f},
     relación G = {G:.2f}, η_mec ≈ {eta_mec:.3f}, η_elec ≈ {eta_elec:.3f}. Usa estos valores como referencia al analizar cada gráfico.
   </p>
 </div>
@@ -2427,11 +2546,13 @@ else:
     df_view = df_range[cols] if cols else df_range
 
 # ---------- CLASIFICACIÓN REGIÓN IEC Y ESTILO ----------
+reg2_label = "MPPT" if control_mode == "MPPT (λ constante)" else "RPM fija"
+
 def region_tag(v):
     if (v_cut_in is not None) and v < v_cut_in:
         return "Pre cut-in"
     if (v_cut_in is not None) and (v_rated is not None) and (v_cut_in <= v < v_rated):
-        return "MPPT"
+        return reg2_label
     if (v_rated is not None) and (v_cut_out is not None) and (v_rated <= v <= v_cut_out):
         return "Potencia limitada"
     if (v_cut_out is not None) and v > v_cut_out:
@@ -2441,6 +2562,7 @@ def region_tag(v):
 region_colors = {
     "Pre cut-in": "rgba(148,163,184,0.08)",
     "MPPT": "rgba(34,197,94,0.10)",
+    "RPM fija": "rgba(34,197,94,0.10)",
     "Potencia limitada": "rgba(234,179,8,0.12)",
     "Sobre cut-out": "rgba(239,68,68,0.12)",
 }
@@ -2480,8 +2602,8 @@ column_config_map = {
             "rpm_rotor",
             help=(
                 "**Descripción:** rpm del rotor bajo control MPPT.\n"
-                "**Fórmula:** Región 2 → (30/πR)·λ_ctrl·v. Región 3 → rpm_rotor_rated.\n"
-                "**Control:** λ_ctrl se edita con el slider ‘TSR objetivo’; rpm_rotor_rated proviene de v_rated."
+                "**Fórmula:** MPPT → (30/πR)·λ_ctrl·v. Sin MPPT → rpm fija entre cut-in y cut-out.\n"
+                "**Control:** MPPT usa ‘TSR objetivo’; sin MPPT usa rpm_rotor_rated."
             )
         ),
         "rpm_gen": st.column_config.NumberColumn(
@@ -2497,7 +2619,7 @@ column_config_map = {
             help=(
                 "**Descripción:** TSR que realmente alcanza el rotor.\n"
                 "**Fórmula:** λ = ω_rot·R / v = U_tip / v.\n"
-                "**Nota:** ≈ λ_ctrl en MPPT; cae en Región 3 al congelar rpm_rotor."
+                "**Nota:** ≈ λ_ctrl en MPPT; en rpm fija varía con v y cae en Región 3."
             )
         ),
         "U_tip (m/s)": st.column_config.NumberColumn(
@@ -2779,7 +2901,7 @@ column_config_map = {
             help=(
                 "**Descripción:** etiqueta IEC automática del bin de viento.\n"
                 f"• Pre cut-in: v < v_cut-in ({v_cut_in:.1f} m/s)\n"
-                f"• MPPT: {v_cut_in:.1f} ≤ v < v_rated ({v_rated:.1f} m/s)\n"
+                f"• {reg2_label}: {v_cut_in:.1f} ≤ v < v_rated ({v_rated:.1f} m/s)\n"
                 f"• Potencia limitada: {v_rated:.1f} ≤ v ≤ v_cut-out ({v_cut_out:.1f} m/s)\n"
                 f"• Sobre cut-out: v > v_cut-out ({v_cut_out:.1f} m/s)\n"
                 "**Nota:** cambia automáticamente si modificas v_cut-in/rated/cut-out en el sidebar."
@@ -2846,6 +2968,83 @@ st.subheader("🌀 Polar Lift–Drag del perfil seleccionado")
 question_prompt("¿En qué intervalo de ángulos de ataque quieres operar la pala para equilibrar sustentación y arrastre según el perfil seleccionado?")
 
 df_polar = build_lift_drag_polar(t_rel=t_rel, symmetric=is_symmetric)
+
+with st.expander("Cargar polar Lift-Drag (CSV o pegado)", expanded=False):
+    use_custom_polar = st.checkbox(
+        "Usar datos cargados",
+        value=False,
+        help="Si se activa, se reemplaza la polar simplificada por tus datos.",
+    )
+    st.caption("Columnas esperadas: alpha_deg, Cl, Cd (ClCd opcional).")
+    polar_file = st.file_uploader(
+        "Subir polar CSV",
+        type=["csv"],
+        accept_multiple_files=False,
+    )
+    st.caption("O ingresa datos manualmente:")
+    default_rows = pd.DataFrame(
+        {
+            "alpha_deg": list(range(-10, 21, 5)),
+            "Cl": [-0.90, -0.45, 0.00, 0.52, 0.90, 1.10, 1.20],
+            "Cd": [0.020, 0.015, 0.012, 0.017, 0.025, 0.030, 0.035],
+        }
+    )
+    polar_table = st.data_editor(
+        st.session_state.get("polar_table", default_rows),
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "alpha_deg": st.column_config.NumberColumn(
+                "alpha_deg",
+                min_value=-10.0,
+                max_value=20.0,
+                step=0.1,
+            ),
+        },
+        key="polar_table",
+    )
+
+if use_custom_polar:
+    df_custom = None
+    if polar_file is not None:
+        df_custom = pd.read_csv(polar_file)
+    elif polar_table is not None and not polar_table.empty:
+        df_custom = polar_table.copy()
+
+    if df_custom is not None and not df_custom.empty:
+        cols = {c.lower().strip(): c for c in df_custom.columns}
+
+        def pick_col(keys):
+            for key in keys:
+                for col_lower, col_name in cols.items():
+                    if key in col_lower:
+                        return col_name
+            return None
+
+        alpha_col = pick_col(["alpha_deg", "alpha", "aoa", "angle"])
+        cl_col = pick_col(["cl"])
+        cd_col = pick_col(["cd"])
+        clcd_col = pick_col(["cl/cd", "clcd", "cl_cd"])
+
+        if alpha_col is None or cl_col is None or cd_col is None:
+            st.error("CSV incompleto: se requieren columnas de alpha_deg (o alpha), Cl y Cd.")
+        else:
+            df_polar = pd.DataFrame(
+                {
+                    "alpha_deg": df_custom[alpha_col].astype(float),
+                    "Cl": df_custom[cl_col].astype(float),
+                    "Cd": df_custom[cd_col].astype(float),
+                }
+            )
+            if clcd_col is not None:
+                df_polar["ClCd"] = df_custom[clcd_col].astype(float)
+            else:
+                df_polar["ClCd"] = np.divide(
+                    df_polar["Cl"].values,
+                    df_polar["Cd"].values,
+                    out=np.zeros_like(df_polar["Cl"].values),
+                    where=(df_polar["Cd"].values != 0),
+                )
 
 fig_polar = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -2938,7 +3137,7 @@ st.subheader("🧭 Ciclo de ángulo de ataque α(θ) – efecto del pitch")
 question_prompt("¿Qué desplazamiento de pitch necesitas validar para mantener α dentro del sweet spot durante todo el ciclo azimutal?")
 
 theta_deg = np.linspace(0, 360, 721)  # 0.5° resolución
-lam_used = float(tsr)                 # TSR del panel (lam_opt_ctrl)
+lam_used = float(tsr_ref)             # TSR de referencia (setpoint o resultante)
 
 # Variantes de pitch (centro en slider actual)
 pitch_variants = [
@@ -3040,8 +3239,11 @@ v_vals = df_rpm_plot["v (m/s)"].values
 
 region = np.where(
     v_vals < v_cut_in, "Parado",
-    np.where(v_vals <= v_rated, "MPPT (λ≈const)",
-             np.where(v_vals <= v_cut_out, "Potencia limitada", "Parado"))
+    np.where(
+        v_vals <= v_rated,
+        "MPPT (λ≈const)" if control_mode == "MPPT (λ constante)" else "RPM fija",
+        np.where(v_vals <= v_cut_out, "Potencia limitada", "Parado"),
+    ),
 )
 
 G_inst = np.divide(
@@ -3103,7 +3305,7 @@ fig_r.add_vrect(
     fillcolor="rgba(34,197,94,0.06)",
     line_width=0,
     layer="below",
-    annotation_text="Región MPPT",
+    annotation_text="Región MPPT" if control_mode == "MPPT (λ constante)" else "Región rpm fija",
     annotation_position="top left",
 )
 
@@ -3198,17 +3400,31 @@ st.markdown("""
 st.subheader("🚀 λ_efectiva, U_tip y Frecuencia eléctrica")
 question_prompt("¿En qué punto la combinación de λ, U_tip y f_e empieza a chocar con restricciones acústicas o de electrónica que debamos ajustar?")
 
-df_u = df.sort_values("v (m/s)").copy()
+# Selector de eje x
+x_axis_mode_u = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_lambda",
+    help="Elige si quieres ver las curvas contra velocidad de viento o contra rpm del rotor.",
+)
+
+if x_axis_mode_u == "v (m/s)":
+    x_col_u = "v (m/s)"
+else:
+    x_col_u = "rpm_rotor"
+
+df_u = df.sort_values(x_col_u).copy()
 
 fig_u = px.line(
     df_u,
-    x="v (m/s)",
+    x=x_col_u,
     y=["λ_efectiva", "U_tip (m/s)", "f_e (Hz)"],
     markers=True,
 )
 
 fig_u.update_layout(
-    xaxis_title="v (m/s)",
+    xaxis_title="v (m/s)" if x_axis_mode_u == "v (m/s)" else "rpm",
     yaxis_title="λ / U_tip [m/s] / f_e [Hz]",
     legend_title="Variable",
     hovermode="x unified",
@@ -3227,36 +3443,55 @@ fig_u.update_yaxes(
     zeroline=False,
 )
 
-# Líneas verticales v_cut-in, v_rated, v_cut-out
-for x, label in [
-    (v_cut_in, "v_cut-in"),
-    (v_rated, "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    if x is not None:
-        fig_u.add_vline(
-            x=float(x),
-            line_dash="dot",
-            line_color="rgba(148,163,184,0.9)",
-            annotation_text=label,
-            annotation_position="top",
+# Líneas de referencia en x
+if x_axis_mode_u == "v (m/s)":
+    for x, label in [
+        (v_cut_in, "v_cut-in"),
+        (v_rated, "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        if x is not None:
+            fig_u.add_vline(
+                x=float(x),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.9)",
+                annotation_text=label,
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+else:
+    for x_val, label, color in [
+        (rpm_rotor_rated, "rpm_rotor_rated", "rgba(148,163,184,0.8)"),
+        (rpm_gen_rated,   "rpm_gen_rated",   "rgba(239,68,68,0.9)"),
+    ]:
+        try:
+            fig_u.add_vline(
+                x=float(x_val),
+                line_dash="dot",
+                line_color=color,
+                annotation_text=label,
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+        except Exception:
+            continue
+
+# Región sombreada entre v_rated y v_cut-out (frecuencia / punta de pala limitadas)
+if x_axis_mode_u == "v (m/s)":
+    if (v_rated is not None) and (v_cut_out is not None):
+        fig_u.add_vrect(
+            x0=float(v_rated),
+            x1=float(v_cut_out),
+            fillcolor="rgba(148,163,184,0.10)",
+            layer="below",
+            line_width=0,
+            annotation_text="Región potencia limitada",
+            annotation_position="top left",
             annotation_font_size=11,
             annotation_font_color="rgba(107,114,128,1)",
         )
-
-# Región sombreada entre v_rated y v_cut-out (frecuencia / punta de pala limitadas)
-if (v_rated is not None) and (v_cut_out is not None):
-    fig_u.add_vrect(
-        x0=float(v_rated),
-        x1=float(v_cut_out),
-        fillcolor="rgba(148,163,184,0.10)",
-        layer="below",
-        line_width=0,
-        annotation_text="Región potencia limitada",
-        annotation_position="top left",
-        annotation_font_size=11,
-        annotation_font_color="rgba(107,114,128,1)",
-)
 
 st.plotly_chart(fig_u, use_container_width=True)
 
@@ -3317,11 +3552,12 @@ lam_opt = float(cp_params["lam_opt"])
 CP_BETZ = 16.0 / 27.0
 
 # --- Línea vertical: TSR objetivo ---
+tsr_line_label = "TSR objetivo" if control_mode == "MPPT (λ constante)" else "TSR @ v_rated"
 fig_cp.add_vline(
-    x=float(tsr),
+    x=float(tsr_ref),
     line_dash="dot",
     line_color="rgba(249,115,22,0.9)",  # naranja
-    annotation_text="TSR objetivo",
+    annotation_text=tsr_line_label,
     annotation_position="top left",
     annotation_yshift=-60,
 )
@@ -3410,39 +3646,100 @@ if dominio_pot == "Potencias vs viento (recomendada)":
         key="pot_norm_pu",
     )
 
+    x_axis_mode_p = st.radio(
+        "Eje x",
+        ("v (m/s)", "rpm"),
+        horizontal=True,
+        key="x_axis_pot",
+        help="Elige si quieres ver las potencias contra velocidad de viento o contra rpm del generador.",
+    )
+
     y_cols_P = [
         "P_aero (kW)",
         "P_mec_gen (kW)",
         "P_out (clip) kW",
     ]
 
-    dfP = df.sort_values("v (m/s)").copy()
-
     if pot_norm and P_nom_kW > 0:
-        for col in y_cols_P:
-            dfP[col] = dfP[col] / P_nom_kW
         y_label = "Potencia [p.u. de P_nom]"
         hline_y = 1.0
     else:
         y_label = "Potencia [kW]"
         hline_y = P_nom_kW
 
-    # FIGURA: POTENCIAS VS VIENTO
-    figP = px.line(
-        dfP,
-        x="v (m/s)",
-        y=y_cols_P,
-        markers=True,
-    )
+    if x_axis_mode_p == "v (m/s)":
+        dfP = df.sort_values("v (m/s)").copy()
+        if pot_norm and P_nom_kW > 0:
+            for col in y_cols_P:
+                dfP[col] = dfP[col] / P_nom_kW
 
-    figP.update_layout(
-        xaxis_title="v (m/s)",
-        yaxis_title=y_label,
-        legend_title="Etapa",
-        hovermode="x unified",
-        plot_bgcolor="white",
-        margin=dict(l=40, r=40, t=40, b=40),
-    )
+        # FIGURA: POTENCIAS VS VIENTO
+        figP = px.line(
+            dfP,
+            x="v (m/s)",
+            y=y_cols_P,
+            markers=True,
+        )
+
+        figP.update_layout(
+            xaxis_title="v (m/s)",
+            yaxis_title=y_label,
+            legend_title="Etapa",
+            hovermode="x unified",
+            plot_bgcolor="white",
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
+    else:
+        mask_reg2_p = (v_grid >= v_cut_in) & (v_grid <= v_rated)
+        dfP_rot = df.loc[mask_reg2_p].sort_values("rpm_rotor").copy()
+        dfP_gen = df.loc[mask_reg2_p].sort_values("rpm_gen").copy()
+
+        P_aero_vals = dfP_rot["P_aero (kW)"].values
+        P_mec_vals = dfP_gen["P_mec_gen (kW)"].values
+        P_out_vals = dfP_gen["P_out (clip) kW"].values
+
+        if pot_norm and P_nom_kW > 0:
+            P_aero_vals = P_aero_vals / P_nom_kW
+            P_mec_vals = P_mec_vals / P_nom_kW
+            P_out_vals = P_out_vals / P_nom_kW
+
+        figP = go.Figure()
+        figP.add_trace(
+            go.Scatter(
+                x=dfP_rot["rpm_rotor"],
+                y=P_aero_vals,
+                mode="lines+markers",
+                name="P_aero (kW)",
+                hovertemplate="rpm_rotor = %{x:.1f} rpm<br>P_aero = %{y:.2f}<extra></extra>",
+            )
+        )
+        figP.add_trace(
+            go.Scatter(
+                x=dfP_gen["rpm_gen"],
+                y=P_mec_vals,
+                mode="lines+markers",
+                name="P_mec_gen (kW)",
+                hovertemplate="rpm_gen = %{x:.1f} rpm<br>P_mec_gen = %{y:.2f}<extra></extra>",
+            )
+        )
+        figP.add_trace(
+            go.Scatter(
+                x=dfP_gen["rpm_gen"],
+                y=P_out_vals,
+                mode="lines+markers",
+                name="P_out (clip) kW",
+                hovertemplate="rpm_gen = %{x:.1f} rpm<br>P_out = %{y:.2f}<extra></extra>",
+            )
+        )
+
+        figP.update_layout(
+            xaxis_title="rpm (rotor/gen)",
+            yaxis_title=y_label,
+            legend_title="Etapa",
+            hovermode="x unified",
+            plot_bgcolor="white",
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
 
     # Fondo con sólo líneas horizontales suaves
     figP.update_xaxes(
@@ -3467,36 +3764,63 @@ if dominio_pot == "Potencias vs viento (recomendada)":
             annotation_font_color="rgba(107,114,128,1)",
         )
 
-    # Líneas verticales v_cut-in, v_rated, v_cut-out
-    for x_val, label in [
-        (v_cut_in, "v_cut-in"),
-        (v_rated, "v_rated"),
-        (v_cut_out, "v_cut-out"),
-    ]:
-        if x_val is not None:
+    if x_axis_mode_p == "v (m/s)":
+        # Líneas verticales v_cut-in, v_rated, v_cut-out
+        for x_val, label in [
+            (v_cut_in, "v_cut-in"),
+            (v_rated, "v_rated"),
+            (v_cut_out, "v_cut-out"),
+        ]:
+            if x_val is not None:
+                figP.add_vline(
+                    x=float(x_val),
+                    line_dash="dot",
+                    line_color="rgba(148,163,184,0.9)",
+                    annotation_text=label,
+                    annotation_position="top",
+                    annotation_font_size=11,
+                    annotation_font_color="rgba(107,114,128,1)",
+                )
+
+        # Región sombreada entre v_rated y v_cut-out (potencia limitada)
+        if (v_rated is not None) and (v_cut_out is not None):
+            figP.add_vrect(
+                x0=float(v_rated),
+                x1=float(v_cut_out),
+                fillcolor="rgba(148,163,184,0.10)",
+                layer="below",
+                line_width=0,
+                annotation_text="Región potencia limitada",
+                annotation_position="top left",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+    else:
+        # rpm nominales de rotor y generador como referencia
+        try:
             figP.add_vline(
-                x=float(x_val),
+                x=float(rpm_rotor_rated),
                 line_dash="dot",
-                line_color="rgba(148,163,184,0.9)",
-                annotation_text=label,
+                line_color="rgba(148,163,184,0.8)",
+                annotation_text="rpm_rotor_rated",
                 annotation_position="top",
                 annotation_font_size=11,
                 annotation_font_color="rgba(107,114,128,1)",
             )
-
-    # Región sombreada entre v_rated y v_cut-out (potencia limitada)
-    if (v_rated is not None) and (v_cut_out is not None):
-        figP.add_vrect(
-            x0=float(v_rated),
-            x1=float(v_cut_out),
-            fillcolor="rgba(148,163,184,0.10)",
-            layer="below",
-            line_width=0,
-            annotation_text="Región potencia limitada",
-            annotation_position="top left",
-            annotation_font_size=11,
-            annotation_font_color="rgba(107,114,128,1)",
-        )
+        except Exception:
+            pass
+        try:
+            figP.add_vline(
+                x=float(rpm_gen_rated),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.8)",
+                annotation_text="rpm_gen_rated",
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+        except Exception:
+            pass
 
     st.plotly_chart(figP, use_container_width=True)
 
@@ -3636,6 +3960,15 @@ else:
 st.subheader("📉 Cp equivalente por etapa")
 question_prompt("¿Qué etapa del tren (rotor, eje o salida eléctrica) debería optimizarse primero según la caída de Cp que ves frente al viento?")
 
+# Selector de eje x
+x_axis_mode_cp = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_cp_eq",
+    help="Elige si quieres ver Cp equivalente contra velocidad de viento o contra rpm (rotor/gen).",
+)
+
 # --- Cálculo de eficiencias locales a partir de los Cp equivalentes ---
 Cp_a = df["Cp_aero_equiv"].values
 Cp_s = df["Cp_shaft_equiv"].values
@@ -3651,28 +3984,96 @@ df_cp_eq["η_mec"]   = eta_mec_loc
 df_cp_eq["η_el"]    = eta_el_loc
 df_cp_eq["η_total"] = eta_tot_loc
 
-# customdata para mostrar eficiencias en el hover
-custom = np.stack([eta_mec_loc, eta_el_loc, eta_tot_loc], axis=-1)
-
 fig_cp_eq = go.Figure()
 
-# --- Curvas de Cp equivalente por etapa ---
-series = [
-    ("Cp_aero_equiv",  "Rotor – Cp_aero"),
-    ("Cp_shaft_equiv", "Eje generador – Cp_shaft"),
-    ("Cp_el_equiv",    "Salida eléctrica – Cp_el"),
-]
+if x_axis_mode_cp == "v (m/s)":
+    df_cp_eq = df_cp_eq.sort_values("v (m/s)").copy()
 
-for col, name in series:
+    # customdata para mostrar eficiencias en el hover
+    custom = np.stack(
+        [df_cp_eq["η_mec"].values, df_cp_eq["η_el"].values, df_cp_eq["η_total"].values],
+        axis=-1,
+    )
+
+    # --- Curvas de Cp equivalente por etapa ---
+    series = [
+        ("Cp_aero_equiv",  "Rotor – Cp_aero"),
+        ("Cp_shaft_equiv", "Eje generador – Cp_shaft"),
+        ("Cp_el_equiv",    "Salida eléctrica – Cp_el"),
+    ]
+
+    for col, name in series:
+        fig_cp_eq.add_trace(
+            go.Scatter(
+                x=df_cp_eq["v (m/s)"],
+                y=df_cp_eq[col],
+                mode="lines+markers",
+                name=name,
+                customdata=custom,
+                hovertemplate=(
+                    "v = %{x:.1f} m/s<br>"
+                    "Cp_equiv = %{y:.3f}<br>"
+                    "η_mec = %{customdata[0]:.3f}<br>"
+                    "η_el = %{customdata[1]:.3f}<br>"
+                    "η_total = %{customdata[2]:.3f}<extra></extra>"
+                ),
+            )
+        )
+else:
+    mask_reg2_cp = (v_grid >= v_cut_in) & (v_grid <= v_rated)
+    df_cp_rot = df_cp_eq.loc[mask_reg2_cp].sort_values("rpm_rotor").copy()
+    df_cp_gen = df_cp_eq.loc[mask_reg2_cp].sort_values("rpm_gen").copy()
+
+    custom_rot = np.stack(
+        [df_cp_rot["η_mec"].values, df_cp_rot["η_el"].values, df_cp_rot["η_total"].values],
+        axis=-1,
+    )
+    custom_gen = np.stack(
+        [df_cp_gen["η_mec"].values, df_cp_gen["η_el"].values, df_cp_gen["η_total"].values],
+        axis=-1,
+    )
+
     fig_cp_eq.add_trace(
         go.Scatter(
-            x=df_cp_eq["v (m/s)"],
-            y=df_cp_eq[col],
+            x=df_cp_rot["rpm_rotor"],
+            y=df_cp_rot["Cp_aero_equiv"],
             mode="lines+markers",
-            name=name,
-            customdata=custom,
+            name="Rotor – Cp_aero",
+            customdata=custom_rot,
             hovertemplate=(
-                "v = %{x:.1f} m/s<br>"
+                "rpm_rotor = %{x:.1f} rpm<br>"
+                "Cp_equiv = %{y:.3f}<br>"
+                "η_mec = %{customdata[0]:.3f}<br>"
+                "η_el = %{customdata[1]:.3f}<br>"
+                "η_total = %{customdata[2]:.3f}<extra></extra>"
+            ),
+        )
+    )
+    fig_cp_eq.add_trace(
+        go.Scatter(
+            x=df_cp_gen["rpm_gen"],
+            y=df_cp_gen["Cp_shaft_equiv"],
+            mode="lines+markers",
+            name="Eje generador – Cp_shaft",
+            customdata=custom_gen,
+            hovertemplate=(
+                "rpm_gen = %{x:.1f} rpm<br>"
+                "Cp_equiv = %{y:.3f}<br>"
+                "η_mec = %{customdata[0]:.3f}<br>"
+                "η_el = %{customdata[1]:.3f}<br>"
+                "η_total = %{customdata[2]:.3f}<extra></extra>"
+            ),
+        )
+    )
+    fig_cp_eq.add_trace(
+        go.Scatter(
+            x=df_cp_gen["rpm_gen"],
+            y=df_cp_gen["Cp_el_equiv"],
+            mode="lines+markers",
+            name="Salida eléctrica – Cp_el",
+            customdata=custom_gen,
+            hovertemplate=(
+                "rpm_gen = %{x:.1f} rpm<br>"
                 "Cp_equiv = %{y:.3f}<br>"
                 "η_mec = %{customdata[0]:.3f}<br>"
                 "η_el = %{customdata[1]:.3f}<br>"
@@ -3691,34 +4092,50 @@ fig_cp_eq.add_hline(
     annotation_position="top left",
 )
 
-# --- Líneas verticales: v_cut-in / v_rated / v_cut-out ---
-for x_val, label in [
-    (v_cut_in,  "v_cut-in"),
-    (v_rated,   "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    fig_cp_eq.add_vline(
-        x=float(x_val),
-        line_dash="dot",
-        line_color="rgba(148,163,184,0.8)",
-        annotation_text=label,
-        annotation_position="top",
-    )
+if x_axis_mode_cp == "v (m/s)":
+    # --- Líneas verticales: v_cut-in / v_rated / v_cut-out ---
+    for x_val, label in [
+        (v_cut_in,  "v_cut-in"),
+        (v_rated,   "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        fig_cp_eq.add_vline(
+            x=float(x_val),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.8)",
+            annotation_text=label,
+            annotation_position="top",
+        )
 
-# --- Región sombreada: operación nominal (potencia constante) ---
-fig_cp_eq.add_vrect(
-    x0=float(v_rated),
-    x1=float(v_cut_out),
-    fillcolor="rgba(148,163,184,0.15)",
-    line_width=0,
-    layer="below",
-    annotation_text="Región potencia limitada",
-    annotation_position="top right",
-)
+    # --- Región sombreada: operación nominal (potencia constante) ---
+    fig_cp_eq.add_vrect(
+        x0=float(v_rated),
+        x1=float(v_cut_out),
+        fillcolor="rgba(148,163,184,0.15)",
+        line_width=0,
+        layer="below",
+        annotation_text="Región potencia limitada",
+        annotation_position="top right",
+    )
+else:
+    for x_val, label in [
+        (rpm_rotor_rated, "rpm_rotor_rated"),
+        (rpm_gen_rated,   "rpm_gen_rated"),
+    ]:
+        try:
+            fig_cp_eq.add_vline(
+                x=float(x_val),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.8)",
+                annotation_text=label,
+                annotation_position="top",
+            )
+        except Exception:
+            continue
 
 # --- Estilo de ejes ---
 fig_cp_eq.update_xaxes(
-    title_text="v (m/s)",
+    title_text="v (m/s)" if x_axis_mode_cp == "v (m/s)" else "rpm (rotor/gen)",
     showgrid=False,
     zeroline=False,
 )
@@ -3768,7 +4185,21 @@ st.markdown("""
 st.subheader("🔍 Pérdidas por etapa (mecánica, generador, electrónica, clipping)")
 question_prompt("¿Qué componente quieres atacar primero para reducir pérdidas cuando pases de la región MPPT a la potencia limitada?")
 
-dfL = df.sort_values("v (m/s)").copy()
+# Selector de eje x
+x_axis_mode_loss = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_loss",
+    help="Elige si quieres ver pérdidas contra velocidad de viento o contra rpm del rotor.",
+)
+
+if x_axis_mode_loss == "v (m/s)":
+    x_col_loss = "v (m/s)"
+else:
+    x_col_loss = "rpm_rotor"
+
+dfL = df.sort_values(x_col_loss).copy()
 
 # --- detectar columnas de pérdidas por patrón, sin depender del nombre exacto ---
 loss_cols = [
@@ -3784,12 +4215,12 @@ if len(loss_cols) == 0:
 else:
     fig_loss = px.area(
         dfL,
-        x="v (m/s)",
+        x=x_col_loss,
         y=loss_cols,
     )
 
     fig_loss.update_layout(
-        xaxis_title="v (m/s)",
+        xaxis_title="v (m/s)" if x_axis_mode_loss == "v (m/s)" else "rpm",
         yaxis_title="Pérdidas [kW]",
         legend_title="Etapa",
         hovermode="x unified",
@@ -3805,36 +4236,50 @@ else:
         zeroline=False,
     )
 
-    # Líneas verticales v_cut-in / v_rated / v_cut-out
-    for x_val, label in [
-        (v_cut_in, "v_cut-in"),
-        (v_rated,  "v_rated"),
-        (v_cut_out,"v_cut-out"),
-    ]:
-        if x_val is not None:
+    if x_axis_mode_loss == "v (m/s)":
+        # Líneas verticales v_cut-in / v_rated / v_cut-out
+        for x_val, label in [
+            (v_cut_in, "v_cut-in"),
+            (v_rated,  "v_rated"),
+            (v_cut_out,"v_cut-out"),
+        ]:
+            if x_val is not None:
+                fig_loss.add_vline(
+                    x=float(x_val),
+                    line_dash="dot",
+                    line_color="rgba(148,163,184,0.9)",
+                    annotation_text=label,
+                    annotation_position="top",
+                    annotation_font_size=11,
+                    annotation_font_color="rgba(107,114,128,1)",
+                )
+
+        # Región potencia limitada
+        if (v_rated is not None) and (v_cut_out is not None):
+            fig_loss.add_vrect(
+                x0=float(v_rated),
+                x1=float(v_cut_out),
+                fillcolor="rgba(148,163,184,0.10)",
+                layer="below",
+                line_width=0,
+                annotation_text="Región potencia limitada",
+                annotation_position="top left",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+    else:
+        try:
             fig_loss.add_vline(
-                x=float(x_val),
+                x=float(rpm_rotor_rated),
                 line_dash="dot",
                 line_color="rgba(148,163,184,0.9)",
-                annotation_text=label,
+                annotation_text="rpm_rotor_rated",
                 annotation_position="top",
                 annotation_font_size=11,
                 annotation_font_color="rgba(107,114,128,1)",
             )
-
-    # Región potencia limitada
-    if (v_rated is not None) and (v_cut_out is not None):
-        fig_loss.add_vrect(
-            x0=float(v_rated),
-            x1=float(v_cut_out),
-            fillcolor="rgba(148,163,184,0.10)",
-            layer="below",
-            line_width=0,
-            annotation_text="Región potencia limitada",
-            annotation_position="top left",
-            annotation_font_size=11,
-            annotation_font_color="rgba(107,114,128,1)",
-        )
+        except Exception:
+            pass
     st.plotly_chart(fig_loss, use_container_width=True)
 
     # ===========================
@@ -3865,6 +4310,15 @@ else:
 st.subheader("📈 Eficiencias: mecánica, generador y global")
 question_prompt("¿Cuál es la eficiencia mínima aceptable en cada etapa antes de considerar rediseño o cambio de proveedor?")
 
+# Selector de eje x
+x_axis_mode_eff = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_eff",
+    help="Elige si quieres ver eficiencias contra velocidad de viento o contra rpm (rotor/gen).",
+)
+
 # --- Vectores base (en W) ---
 v_axis      = v_grid                      # o df["v (m/s)"].values
 P_aero      = P_aero_W                    # Potencia aerodinámica
@@ -3888,33 +4342,75 @@ eta_tot_pct = 100 * np.divide(
     where=(P_aero > 0)
 )
 
-eff_df = pd.DataFrame({
-    "v (m/s)":      v_axis,
-    "η_mec [%]":   np.round(eta_mec_pct, 1),
-    "η_gen [%]":   np.round(eta_gen_pct, 1),
-    "η_total [%]": np.round(eta_tot_pct, 1),
-})
+figE = go.Figure()
 
-figE = px.line(
-    eff_df,
-    x="v (m/s)",
-    y=["η_mec [%]", "η_gen [%]", "η_total [%]"],
-    markers=True,
-)
+if x_axis_mode_eff == "v (m/s)":
+    eff_df = pd.DataFrame({
+        "v (m/s)":      v_axis,
+        "η_mec [%]":   np.round(eta_mec_pct, 1),
+        "η_gen [%]":   np.round(eta_gen_pct, 1),
+        "η_total [%]": np.round(eta_tot_pct, 1),
+    })
 
-# Estilo de trazas + hover
-figE.update_traces(
-    line=dict(width=2.4),
-    marker=dict(size=7),
-    hovertemplate=(
-        "v = %{x:.1f} m/s<br>"
-        "%{y:.1f} %<extra>%{fullData.name}</extra>"
-    ),
-)
+    figE = px.line(
+        eff_df,
+        x="v (m/s)",
+        y=["η_mec [%]", "η_gen [%]", "η_total [%]"],
+        markers=True,
+    )
+
+    figE.update_traces(
+        line=dict(width=2.4),
+        marker=dict(size=7),
+        hovertemplate=(
+            "v = %{x:.1f} m/s<br>"
+            "%{y:.1f} %<extra>%{fullData.name}</extra>"
+        ),
+    )
+else:
+    mask_reg2_eff = (v_grid >= v_cut_in) & (v_grid <= v_rated)
+    eff_rot_df = pd.DataFrame({
+        "rpm_rotor": rpm_rotor[mask_reg2_eff],
+        "η_mec [%]": np.round(eta_mec_pct[mask_reg2_eff], 1),
+    }).sort_values("rpm_rotor")
+
+    eff_gen_df = pd.DataFrame({
+        "rpm_gen":   rpm_gen[mask_reg2_eff],
+        "η_gen [%]": np.round(eta_gen_pct[mask_reg2_eff], 1),
+        "η_total [%]": np.round(eta_tot_pct[mask_reg2_eff], 1),
+    }).sort_values("rpm_gen")
+
+    figE.add_trace(
+        go.Scatter(
+            x=eff_rot_df["rpm_rotor"],
+            y=eff_rot_df["η_mec [%]"],
+            mode="lines+markers",
+            name="η_mec [%]",
+            hovertemplate="rpm_rotor = %{x:.1f} rpm<br>%{y:.1f} %<extra></extra>",
+        )
+    )
+    figE.add_trace(
+        go.Scatter(
+            x=eff_gen_df["rpm_gen"],
+            y=eff_gen_df["η_gen [%]"],
+            mode="lines+markers",
+            name="η_gen [%]",
+            hovertemplate="rpm_gen = %{x:.1f} rpm<br>%{y:.1f} %<extra></extra>",
+        )
+    )
+    figE.add_trace(
+        go.Scatter(
+            x=eff_gen_df["rpm_gen"],
+            y=eff_gen_df["η_total [%]"],
+            mode="lines+markers",
+            name="η_total [%]",
+            hovertemplate="rpm_gen = %{x:.1f} rpm<br>%{y:.1f} %<extra></extra>",
+        )
+    )
 
 # Layout general + hover unificado
 figE.update_layout(
-    xaxis_title="v (m/s)",
+    xaxis_title="v (m/s)" if x_axis_mode_eff == "v (m/s)" else "rpm (rotor/gen)",
     yaxis_title="Eficiencia [%]",
     legend_title="Etapa",
     hovermode="x unified",         # 👈 cuadro único con las 3 eficiencias
@@ -3935,34 +4431,52 @@ figE.update_yaxes(
     zeroline=False,
 )
 
-# --- Líneas verticales: cut-in / rated / cut-out ---
-for x_val, label in [
-    (v_cut_in,  "v_cut-in"),
-    (v_rated,   "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    figE.add_vline(
-        x=float(x_val),
-        line_dash="dot",
-        line_color="rgba(148,163,184,0.8)",
-        annotation_text=label,
-        annotation_position="top",
+if x_axis_mode_eff == "v (m/s)":
+    # --- Líneas verticales: cut-in / rated / cut-out ---
+    for x_val, label in [
+        (v_cut_in,  "v_cut-in"),
+        (v_rated,   "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        figE.add_vline(
+            x=float(x_val),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.8)",
+            annotation_text=label,
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+
+    # --- Región sombreada: potencia limitada (IEC 61400-2 para <200 kW) ---
+    figE.add_vrect(
+        x0=float(v_rated),
+        x1=float(v_cut_out),
+        fillcolor="rgba(148,163,184,0.10)",
+        line_width=0,
+        layer="below",
+        annotation_text="Región potencia constante / IEC 61400-2",
+        annotation_position="top right",
         annotation_font_size=11,
         annotation_font_color="rgba(107,114,128,1)",
     )
-
-# --- Región sombreada: potencia limitada (IEC 61400-2 para <200 kW) ---
-figE.add_vrect(
-    x0=float(v_rated),
-    x1=float(v_cut_out),
-    fillcolor="rgba(148,163,184,0.10)",
-    line_width=0,
-    layer="below",
-    annotation_text="Región potencia constante / IEC 61400-2",
-    annotation_position="top right",
-    annotation_font_size=11,
-    annotation_font_color="rgba(107,114,128,1)",
-)
+else:
+    for x_val, label in [
+        (rpm_rotor_rated, "rpm_rotor_rated"),
+        (rpm_gen_rated,   "rpm_gen_rated"),
+    ]:
+        try:
+            figE.add_vline(
+                x=float(x_val),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.8)",
+                annotation_text=label,
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+        except Exception:
+            continue
 st.plotly_chart(figE, use_container_width=True)
 
 st.markdown("""
@@ -3994,18 +4508,34 @@ section_header("🛠️ Tren mecánico y cargas")
 st.subheader("🧱 Momento flector en unión pala–struts")
 question_prompt("¿En qué bins el momento flector supera tu límite FEM y cómo influye el brazo efectivo o la masa de pala?")
 
-df_moment = df.sort_values("v (m/s)").copy()
+# Selector de eje x
+x_axis_mode_moment = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_moment",
+    help="Elige si quieres ver el momento contra velocidad de viento o contra rpm del rotor.",
+)
+
+if x_axis_mode_moment == "v (m/s)":
+    x_col_moment = "v (m/s)"
+    hover_x_moment = "v = %{x:.1f} m/s"
+else:
+    x_col_moment = "rpm_rotor"
+    hover_x_moment = "rpm = %{x:.0f} rpm"
+
+df_moment = df.sort_values(x_col_moment).copy()
 
 fig_mbase = go.Figure()
 fig_mbase.add_trace(
     go.Scatter(
-        x=df_moment["v (m/s)"],
+        x=df_moment[x_col_moment],
         y=df_moment["M_base (kN·m)"],
         mode="lines+markers",
         name="M_base (kN·m)",
         line=dict(width=2.8),
         marker=dict(size=7),
-        hovertemplate="v = %{x:.1f} m/s<br>M_base = %{y:.1f} kN·m<extra></extra>",
+        hovertemplate=hover_x_moment + "<br>M_base = %{y:.1f} kN·m<extra></extra>",
     )
 )
 
@@ -4019,7 +4549,7 @@ if M_base_max_iec > 0:
     )
 
 fig_mbase.update_layout(
-    xaxis_title="v (m/s)",
+    xaxis_title="v (m/s)" if x_axis_mode_moment == "v (m/s)" else "rpm",
     yaxis_title="Momento flector raíz [kN·m]",
     hovermode="x unified",
     plot_bgcolor="white",
@@ -4033,20 +4563,34 @@ fig_mbase.update_yaxes(
     zeroline=False,
 )
 
-for x_val, label in [
-    (v_cut_in, "v_cut-in"),
-    (v_rated, "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    fig_mbase.add_vline(
-        x=float(x_val),
-        line_dash="dot",
-        line_color="rgba(148,163,184,0.6)",
-        annotation_text=label,
-        annotation_position="top",
-        annotation_font_size=11,
-        annotation_font_color="rgba(107,114,128,1)",
-    )
+if x_axis_mode_moment == "v (m/s)":
+    for x_val, label in [
+        (v_cut_in, "v_cut-in"),
+        (v_rated, "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        fig_mbase.add_vline(
+            x=float(x_val),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.6)",
+            annotation_text=label,
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+else:
+    try:
+        fig_mbase.add_vline(
+            x=float(rpm_rotor_rated),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.6)",
+            annotation_text="rpm_rotor_rated",
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+    except Exception:
+        pass
 
 st.plotly_chart(fig_mbase, use_container_width=True)
 
@@ -4066,16 +4610,36 @@ st.markdown("""
 st.subheader("🧩 Tensiones en struts")
 question_prompt("¿El área efectiva de strut aporta suficiente margen frente al esfuerzo axial estimado?")
 
+# Selector de eje x
+x_axis_mode_strut = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_strut",
+    help="Elige si quieres ver las tensiones contra velocidad de viento o contra rpm del rotor.",
+)
+
+if x_axis_mode_strut == "v (m/s)":
+    x_strut = v_grid
+    xaxis_title_strut = "v (m/s)"
+    hover_x_strut = "v = %{x:.1f} m/s"
+    title_suffix_strut = "viento"
+else:
+    x_strut = rpm_rotor
+    xaxis_title_strut = "rpm"
+    hover_x_strut = "rpm = %{x:.0f} rpm"
+    title_suffix_strut = "rpm"
+
 show_both_strut = st.checkbox("Mostrar ambos gráficos (tensión + margen)", value=True)
 
 fig_strut = go.Figure()
 fig_strut.add_trace(
     go.Scatter(
-        x=v_grid,
+        x=x_strut,
         y=sigma_strut_MPa,
         mode="lines+markers",
         name="σ_strut (MPa)",
-        hovertemplate="v = %{x:.1f} m/s<br>σ_strut = %{y:.1f} MPa<extra></extra>",
+        hovertemplate=hover_x_strut + "<br>σ_strut = %{y:.1f} MPa<extra></extra>",
     )
 )
 if allow_strut_MPa > 0:
@@ -4087,8 +4651,8 @@ if allow_strut_MPa > 0:
         annotation_position="top right",
     )
 fig_strut.update_layout(
-    title="Tensión axial en struts vs viento",
-    xaxis_title="v (m/s)",
+    title=f"Tensión axial en struts vs {title_suffix_strut}",
+    xaxis_title=xaxis_title_strut,
     yaxis_title="σ_strut (MPa)",
     hovermode="x unified",
     plot_bgcolor="white",
@@ -4096,31 +4660,45 @@ fig_strut.update_layout(
 )
 fig_strut.update_xaxes(showgrid=False, zeroline=False)
 fig_strut.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.35)", zeroline=False)
-for x_val, label in [
-    (v_cut_in, "v_cut-in"),
-    (v_rated, "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    fig_strut.add_vline(
-        x=float(x_val),
-        line_dash="dot",
-        line_color="rgba(148,163,184,0.6)",
-        annotation_text=label,
-        annotation_position="top",
-        annotation_font_size=11,
-        annotation_font_color="rgba(107,114,128,1)",
-    )
+if x_axis_mode_strut == "v (m/s)":
+    for x_val, label in [
+        (v_cut_in, "v_cut-in"),
+        (v_rated, "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        fig_strut.add_vline(
+            x=float(x_val),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.6)",
+            annotation_text=label,
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+else:
+    try:
+        fig_strut.add_vline(
+            x=float(rpm_rotor_rated),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.6)",
+            annotation_text="rpm_rotor_rated",
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+    except Exception:
+        pass
 st.plotly_chart(fig_strut, use_container_width=True)
 
 if show_both_strut:
     fig_strut_margin = go.Figure()
     fig_strut_margin.add_trace(
         go.Scatter(
-            x=v_grid,
+            x=x_strut,
             y=margin_strut * 100.0,
             mode="lines+markers",
             name="Margen σ_strut (%)",
-            hovertemplate="v = %{x:.1f} m/s<br>margen = %{y:.1f}%<extra></extra>",
+            hovertemplate=hover_x_strut + "<br>margen = %{y:.1f}%<extra></extra>",
         )
     )
     fig_strut_margin.add_hline(
@@ -4131,8 +4709,8 @@ if show_both_strut:
         annotation_position="top right",
     )
     fig_strut_margin.update_layout(
-        title="Margen en struts vs viento",
-        xaxis_title="v (m/s)",
+        title=f"Margen en struts vs {title_suffix_strut}",
+        xaxis_title=xaxis_title_strut,
         yaxis_title="Margen (%)",
         hovermode="x unified",
         plot_bgcolor="white",
@@ -4140,20 +4718,34 @@ if show_both_strut:
     )
     fig_strut_margin.update_xaxes(showgrid=False, zeroline=False)
     fig_strut_margin.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.35)", zeroline=False)
-    for x_val, label in [
-        (v_cut_in, "v_cut-in"),
-        (v_rated, "v_rated"),
-        (v_cut_out, "v_cut-out"),
-    ]:
-        fig_strut_margin.add_vline(
-            x=float(x_val),
-            line_dash="dot",
-            line_color="rgba(148,163,184,0.6)",
-            annotation_text=label,
-            annotation_position="top",
-            annotation_font_size=11,
-            annotation_font_color="rgba(107,114,128,1)",
-        )
+    if x_axis_mode_strut == "v (m/s)":
+        for x_val, label in [
+            (v_cut_in, "v_cut-in"),
+            (v_rated, "v_rated"),
+            (v_cut_out, "v_cut-out"),
+        ]:
+            fig_strut_margin.add_vline(
+                x=float(x_val),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.6)",
+                annotation_text=label,
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+    else:
+        try:
+            fig_strut_margin.add_vline(
+                x=float(rpm_rotor_rated),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.6)",
+                annotation_text="rpm_rotor_rated",
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+        except Exception:
+            pass
     st.plotly_chart(fig_strut_margin, use_container_width=True)
 
 st.markdown(f"""
@@ -4186,13 +4778,33 @@ T_gen_safe = T_gen_nom * 1.10  # umbral “zona amarilla”
 # Ordenar por viento
 dfT = df.sort_values("v (m/s)").copy()
 
-# Pasar a formato largo para usar px.line
-dfT_long = dfT.melt(
-    id_vars=["v (m/s)"],
-    value_vars=["T_rotor (N·m)", "T_gen (N·m)"],
-    var_name="Variable",
-    value_name="T [N·m]",
+# Selector de eje x
+x_axis_mode = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_torque",
+    help="Elige si quieres ver el par contra velocidad de viento o contra rpm.",
 )
+
+if x_axis_mode == "v (m/s)":
+    x_col = "v (m/s)"
+    # Pasar a formato largo para usar px.line
+    dfT_long = dfT.melt(
+        id_vars=[x_col],
+        value_vars=["T_rotor (N·m)", "T_gen (N·m)"],
+        var_name="Variable",
+        value_name="T [N·m]",
+    )
+else:
+    x_col = "rpm"
+    dfT_long = pd.DataFrame(
+        {
+            x_col: np.concatenate([dfT["rpm_rotor"].values, dfT["rpm_gen"].values]),
+            "T [N·m]": np.concatenate([dfT["T_rotor (N·m)"].values, dfT["T_gen (N·m)"].values]),
+            "Variable": (["T_rotor (N·m)"] * len(dfT)) + (["T_gen (N·m)"] * len(dfT)),
+        }
+    )
 
 # Mapa más legible de nombres
 dfT_long["Variable"] = dfT_long["Variable"].map({
@@ -4203,7 +4815,7 @@ dfT_long["Variable"] = dfT_long["Variable"].map({
 # FIGURA BASE
 figT = px.line(
     dfT_long,
-    x="v (m/s)",
+    x=x_col,
     y="T [N·m]",
     color="Variable",
     markers=True,
@@ -4211,7 +4823,7 @@ figT = px.line(
 
 # Estilo general coherente con el resto
 figT.update_layout(
-    xaxis_title="v (m/s)",
+    xaxis_title="v (m/s)" if x_axis_mode == "v (m/s)" else "rpm",
     yaxis_title="Par [N·m]",
     legend_title="Variable",
     hovermode="x unified",
@@ -4230,9 +4842,10 @@ figT.update_yaxes(
 )
 
 # Hover más técnico
+hover_x = "v = %{x:.1f} m/s" if x_axis_mode == "v (m/s)" else "rpm = %{x:.0f} rpm"
 figT.update_traces(
     hovertemplate=(
-        "v = %{x:.1f} m/s<br>"
+        f"{hover_x}<br>"
         "%{fullData.name} = %{y:,.0f} N·m<extra></extra>"
     )
 )
@@ -4286,30 +4899,49 @@ try:
 except NameError:
     pass
 
-# v_rated, v_cut-out y v_shutdown IEC
-for x_val, label in [
-    (v_rated,        "v_rated"),
-    (v_cut_out,      "v_cut-out"),
-    ("_shutdown_",   "v_shutdown IEC"),
-]:
-    try:
-        if label == "v_shutdown IEC":
-            x_draw = float(v_shutdown_iec)
-        else:
-            x_draw = float(x_val)
+if x_axis_mode == "v (m/s)":
+    # v_rated, v_cut-out y v_shutdown IEC
+    for x_val, label in [
+        (v_rated,        "v_rated"),
+        (v_cut_out,      "v_cut-out"),
+        ("_shutdown_",   "v_shutdown IEC"),
+    ]:
+        try:
+            if label == "v_shutdown IEC":
+                x_draw = float(v_shutdown_iec)
+            else:
+                x_draw = float(x_val)
 
-        figT.add_vline(
-            x=x_draw,
-            line_dash="dot" if label != "v_shutdown IEC" else "dash",
-            line_color="rgba(148,163,184,0.8)" if label != "v_shutdown IEC" else "rgba(239,68,68,0.9)",
-            annotation_text=label,
-            annotation_position="top",
-            annotation_font_size=11,
-            annotation_font_color="rgba(107,114,128,1)",
-        )
-    except Exception:
-        # Si alguna no está definida, simplemente no se dibuja
-        continue
+            figT.add_vline(
+                x=x_draw,
+                line_dash="dot" if label != "v_shutdown IEC" else "dash",
+                line_color="rgba(148,163,184,0.8)" if label != "v_shutdown IEC" else "rgba(239,68,68,0.9)",
+                annotation_text=label,
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+        except Exception:
+            # Si alguna no está definida, simplemente no se dibuja
+            continue
+else:
+    # rpm nominales de rotor y generador
+    for x_val, label, color in [
+        (rpm_rotor_rated, "rpm_rotor_rated", "rgba(148,163,184,0.8)"),
+        (rpm_gen_rated,   "rpm_gen_rated",   "rgba(239,68,68,0.9)"),
+    ]:
+        try:
+            figT.add_vline(
+                x=float(x_val),
+                line_dash="dot",
+                line_color=color,
+                annotation_text=label,
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+        except Exception:
+            continue
 st.plotly_chart(figT, use_container_width=True)
 
 st.markdown("""
@@ -4519,12 +5151,32 @@ section_header("🔌 Sistema eléctrico y vibraciones")
 st.subheader("🔌 Corriente estimada vs velocidad de viento")
 question_prompt("¿Qué corriente pico estás dispuesto a tolerar antes de redimensionar cables, breaker o control de par?")
 
-# Ordenamos por viento para que la curva quede limpia
-dfI = df.sort_values("v (m/s)").copy()
+# Selector de eje x
+x_axis_mode_I = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_current",
+    help="Elige si quieres ver la corriente contra velocidad de viento o contra rpm del rotor.",
+)
+
+if x_axis_mode_I == "v (m/s)":
+    x_col_I = "v (m/s)"
+    hover_x_I = "v = %{x:.1f} m/s"
+else:
+    x_col_I = "rpm_rotor"
+    hover_x_I = "rpm = %{x:.0f} rpm"
+
+# Ordenamos por el eje seleccionado para que la curva quede limpia
+if x_axis_mode_I == "v (m/s)":
+    dfI = df.sort_values(x_col_I).copy()
+else:
+    mask_reg2_I = (v_grid >= v_cut_in) & (v_grid <= v_rated)
+    dfI = df.loc[mask_reg2_I].sort_values(x_col_I).copy()
 
 figI = px.line(
     dfI,
-    x="v (m/s)",
+    x=x_col_I,
     y="I_est (A)",
     markers=True,
 )
@@ -4534,7 +5186,7 @@ figI.update_traces(
     line=dict(width=2.6),
     marker=dict(size=7),
     hovertemplate=(
-        "v = %{x:.1f} m/s<br>"
+        f"{hover_x_I}<br>"
         "I_est = %{y:.1f} A<extra></extra>"
     ),
     name="I_est (A)",
@@ -4543,7 +5195,7 @@ figI.update_traces(
 
 # Layout general + hover unificado
 figI.update_layout(
-    xaxis_title="v (m/s)",
+    xaxis_title="v (m/s)" if x_axis_mode_I == "v (m/s)" else "rpm",
     yaxis_title="Corriente trifásica estimada [A]",
     legend_title="",
     hovermode="x unified",          # 🔥 cuadro único al mover el cursor
@@ -4567,22 +5219,34 @@ figI.update_yaxes(
     zeroline=False,
 )
 
-# ---- Líneas verticales: v_rated y v_cut-out ----
-figI.add_vline(
-    x=float(v_rated),
-    line_dash="dot",
-    line_color="rgba(148,163,184,0.8)",
-    annotation_text="v_rated",
-    annotation_position="top",
-)
+if x_axis_mode_I == "v (m/s)":
+    # ---- Líneas verticales: v_rated y v_cut-out ----
+    figI.add_vline(
+        x=float(v_rated),
+        line_dash="dot",
+        line_color="rgba(148,163,184,0.8)",
+        annotation_text="v_rated",
+        annotation_position="top",
+    )
 
-figI.add_vline(
-    x=float(v_cut_out),
-    line_dash="dot",
-    line_color="rgba(148,163,184,0.8)",
-    annotation_text="v_cut-out",
-    annotation_position="top",
-)
+    figI.add_vline(
+        x=float(v_cut_out),
+        line_dash="dot",
+        line_color="rgba(148,163,184,0.8)",
+        annotation_text="v_cut-out",
+        annotation_position="top",
+    )
+else:
+    try:
+        figI.add_vline(
+            x=float(rpm_rotor_rated),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.8)",
+            annotation_text="rpm_rotor_rated",
+            annotation_position="top",
+        )
+    except Exception:
+        pass
 
 # ---- Línea horizontal: corriente nominal del generador ----
 figI.add_hline(
@@ -4631,8 +5295,24 @@ st.markdown("""
 st.subheader("📡 Frecuencias 1P / 3P del rotor")
 question_prompt("¿Alguna de las frecuencias 1P o 3P coincide con modos estructurales que tengamos que evitar en el diseño final?")
 
-# Ordenamos por viento y preparamos info extra para el hover
-df_freq = df.sort_values("v (m/s)").copy()
+# Selector de eje x
+x_axis_mode_freq = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_freq",
+    help="Elige si quieres ver las frecuencias contra velocidad de viento o contra rpm del rotor.",
+)
+
+if x_axis_mode_freq == "v (m/s)":
+    x_col_freq = "v (m/s)"
+    hover_x_freq = "v = %{x:.1f} m/s"
+else:
+    x_col_freq = "rpm_rotor"
+    hover_x_freq = "rpm = %{x:.0f} rpm"
+
+# Ordenamos por el eje seleccionado y preparamos info extra para el hover
+df_freq = df.sort_values(x_col_freq).copy()
 custom = np.stack(
     [df_freq["rpm_rotor"].values, df_freq["λ_efectiva"].values],
     axis=-1
@@ -4648,7 +5328,7 @@ series_freq = [
 for col, name in series_freq:
     figF.add_trace(
         go.Scatter(
-            x=df_freq["v (m/s)"],
+            x=df_freq[x_col_freq],
             y=df_freq[col],
             mode="lines+markers",
             name=name,
@@ -4656,7 +5336,7 @@ for col, name in series_freq:
             line=dict(width=2.4),
             marker=dict(size=7),
             hovertemplate=(
-                "v = %{x:.1f} m/s<br>"
+                f"{hover_x_freq}<br>"
                 "f = %{y:.3f} Hz<br>"
                 "rpm_rotor = %{customdata[0]:.1f} rpm<br>"
                 "λ_efectiva = %{customdata[1]:.2f}"
@@ -4665,21 +5345,35 @@ for col, name in series_freq:
         )
     )
 
-# Líneas verticales: cut-in / rated / cut-out
-for x_val, label in [
-    (v_cut_in,  "v_cut-in"),
-    (v_rated,   "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    figF.add_vline(
-        x=float(x_val),
-        line_dash="dot",
-        line_color="rgba(148,163,184,0.8)",
-        annotation_text=label,
-        annotation_position="top",
-        annotation_font_size=11,
-        annotation_font_color="rgba(107,114,128,1)",
-    )
+if x_axis_mode_freq == "v (m/s)":
+    # Líneas verticales: cut-in / rated / cut-out
+    for x_val, label in [
+        (v_cut_in,  "v_cut-in"),
+        (v_rated,   "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        figF.add_vline(
+            x=float(x_val),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.8)",
+            annotation_text=label,
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+else:
+    try:
+        figF.add_vline(
+            x=float(rpm_rotor_rated),
+            line_dash="dot",
+            line_color="rgba(148,163,184,0.8)",
+            annotation_text="rpm_rotor_rated",
+            annotation_position="top",
+            annotation_font_size=11,
+            annotation_font_color="rgba(107,114,128,1)",
+        )
+    except Exception:
+        pass
 
 # Banda típica de modos propios torre/fundación
 f_min_modo = 0.2   # Hz  (ajusta según cálculo estructural real)
@@ -4697,7 +5391,7 @@ figF.add_hrect(
 )
 
 figF.update_layout(
-    xaxis_title="v (m/s)",
+    xaxis_title="v (m/s)" if x_axis_mode_freq == "v (m/s)" else "rpm",
     yaxis_title="Frecuencia [Hz]",
     legend_title="Componente",
     hovermode="x unified",          # 👈 cuadro único con las dos curvas
@@ -4741,17 +5435,33 @@ if use_noise:
     st.subheader("🔈 Ruido estimado vs velocidad de viento")
     question_prompt("¿Cumples con los límites acústicos del sitio a la distancia crítica o necesitas estrategias de reducción de U_tip?")
 
+    # Selector de eje x
+    x_axis_mode_noise = st.radio(
+        "Eje x",
+        ("v (m/s)", "rpm"),
+        horizontal=True,
+        key="x_axis_noise",
+        help="Elige si quieres ver el ruido contra velocidad de viento o contra rpm del rotor.",
+    )
+
+    if x_axis_mode_noise == "v (m/s)":
+        x_col_noise = "v (m/s)"
+    else:
+        x_col_noise = "rpm_rotor"
+
+    df_noise = df.sort_values(x_col_noise).copy()
+
     # --- Curva principal ---
     figNoise = px.line(
-        df,
-        x="v (m/s)",
+        df_noise,
+        x=x_col_noise,
         y=["Lw (dB)", "Lp_obs (dB)"],
         markers=True,
     )
 
     # --- Hover unificado y estilo principal ---
     figNoise.update_layout(
-        xaxis_title="v (m/s)",
+        xaxis_title="v (m/s)" if x_axis_mode_noise == "v (m/s)" else "rpm",
         yaxis_title="Nivel sonoro [dB]",
         legend_title="Magnitud",
         hovermode="x unified",          # 🔥 Tooltip unificado
@@ -4772,21 +5482,35 @@ if use_noise:
         zeroline=False,
     )
 
-    # --- Líneas verticales: cut-in / rated / cut-out ---
-    for x_val, label in [
-        (v_cut_in,  "v_cut-in"),
-        (v_rated,   "v_rated"),
-        (v_cut_out, "v_cut-out"),
-    ]:
-        figNoise.add_vline(
-            x=float(x_val),
-            line_dash="dot",
-            line_color="rgba(148,163,184,0.85)",
-            annotation_text=label,
-            annotation_position="top",
-            annotation_font_size=11,
-            annotation_font_color="rgba(107,114,128,1)",
-        )
+    if x_axis_mode_noise == "v (m/s)":
+        # --- Líneas verticales: cut-in / rated / cut-out ---
+        for x_val, label in [
+            (v_cut_in,  "v_cut-in"),
+            (v_rated,   "v_rated"),
+            (v_cut_out, "v_cut-out"),
+        ]:
+            figNoise.add_vline(
+                x=float(x_val),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.85)",
+                annotation_text=label,
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+    else:
+        try:
+            figNoise.add_vline(
+                x=float(rpm_rotor_rated),
+                line_dash="dot",
+                line_color="rgba(148,163,184,0.85)",
+                annotation_text="rpm_rotor_rated",
+                annotation_position="top",
+                annotation_font_size=11,
+                annotation_font_color="rgba(107,114,128,1)",
+            )
+        except Exception:
+            pass
 
     # --- Línea horizontal: nivel objetivo en receptor ---
     Lp_obj = 45.0
@@ -4986,22 +5710,36 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# KPIs globales para alertas / escenarios
+# KPIs globales para alertas / escenarios (solo región operativa IEC)
 # =========================================================
-max_T_gen   = float(df["T_gen (N·m)"].max())
-max_T_rotor = float(df["T_rotor (N·m)"].max())
-max_I_est   = float(df["I_est (A)"].max())
-max_rpm_rot = float(df["rpm_rotor"].max())
-max_P_out   = float(df["P_out (clip) kW"].max())
-max_g_pala  = float(np.nanmax(df["a_cen (g)"].values)) if "a_cen (g)" in df.columns else np.nan
-max_M_base  = float(np.nanmax(df["M_base (kN·m)"].values)) if "M_base (kN·m)" in df.columns else np.nan
-max_sigma_root = float(np.nanmax(sigma_root_MPa)) if sigma_root_MPa.size else np.nan
-max_sigma_strut = float(np.nanmax(sigma_strut_MPa)) if sigma_strut_MPa.size else np.nan
+op_mask = None
+if (v_cut_in is not None) and (v_cut_out is not None):
+    op_mask = (df["v (m/s)"] >= v_cut_in) & (df["v (m/s)"] <= v_cut_out)
 
-if T_gen_nom > 0:
-    margen_Tgen_nom = (T_gen_nom - max_T_gen) / T_gen_nom
+df_alert = df.loc[op_mask] if op_mask is not None else df
+if df_alert.empty:
+    df_alert = df.copy()
+
+sigma_root_sel = sigma_root_MPa
+sigma_strut_sel = sigma_strut_MPa
+if op_mask is not None and sigma_root_MPa.size == len(op_mask):
+    sigma_root_sel = sigma_root_MPa[op_mask.values]
+    sigma_strut_sel = sigma_strut_MPa[op_mask.values]
+
+max_T_gen   = float(df_alert["T_gen (N·m)"].max())
+max_T_rotor = float(df_alert["T_rotor (N·m)"].max())
+max_I_est   = float(df_alert["I_est (A)"].max())
+max_rpm_rot = float(df_alert["rpm_rotor"].max())
+max_P_out   = float(df_alert["P_out (clip) kW"].max())
+max_g_pala  = float(np.nanmax(df_alert["a_cen (g)"].values)) if "a_cen (g)" in df_alert.columns else np.nan
+max_M_base  = float(np.nanmax(df_alert["M_base (kN·m)"].values)) if "M_base (kN·m)" in df_alert.columns else np.nan
+max_sigma_root = float(np.nanmax(sigma_root_sel)) if sigma_root_sel.size else np.nan
+max_sigma_strut = float(np.nanmax(sigma_strut_sel)) if sigma_strut_sel.size else np.nan
+
+if T_gen_max > 0:
+    margen_Tgen_iec = (T_gen_max - max_T_gen) / T_gen_max
 else:
-    margen_Tgen_nom = np.nan
+    margen_Tgen_iec = np.nan
 
 try:
     if T_rotor_max_iec > 0:
@@ -5099,13 +5837,33 @@ with col_e5:
         accent=accent
     )
 
+# Selector de eje x
+x_axis_mode_dc = st.radio(
+    "Eje x",
+    ("v (m/s)", "rpm"),
+    horizontal=True,
+    key="x_axis_dc",
+    help="Elige si quieres ver la utilización del bus DC contra velocidad de viento o contra rpm del rotor.",
+)
+
+if x_axis_mode_dc == "v (m/s)":
+    x_dc = v_grid
+    hover_x_dc = "v = %{x:.2f} m/s"
+    title_dc = "Utilización del bus DC vs viento"
+    xaxis_title_dc = "v (m/s)"
+else:
+    x_dc = rpm_rotor
+    hover_x_dc = "rpm = %{x:.0f} rpm"
+    title_dc = "Utilización del bus DC vs rpm"
+    xaxis_title_dc = "rpm"
+
 fig_dc = go.Figure()
 fig_dc.add_trace(go.Scatter(
-    x=v_grid,
+    x=x_dc,
     y=dc_util_series * 100.0,
     mode="lines+markers",
     name="Duty DC [%]",
-    hovertemplate="v = %{x:.2f} m/s<br>Duty = %{y:.1f}%<extra></extra>"
+    hovertemplate=hover_x_dc + "<br>Duty = %{y:.1f}%<extra></extra>"
 ))
 fig_dc.add_hline(
     y=100,
@@ -5114,21 +5872,33 @@ fig_dc.add_hline(
     annotation_text="Capacidad Vdc·Idc",
     annotation_position="top left"
 )
-for x_line, label in [
-    (v_cut_in, "v_cut-in"),
-    (v_rated, "v_rated"),
-    (v_cut_out, "v_cut-out"),
-]:
-    fig_dc.add_vline(
-        x=x_line,
-        line_dash="dot",
-        line_color="rgba(71,85,105,0.6)",
-        annotation_text=label,
-        annotation_position="top"
-    )
+if x_axis_mode_dc == "v (m/s)":
+    for x_line, label in [
+        (v_cut_in, "v_cut-in"),
+        (v_rated, "v_rated"),
+        (v_cut_out, "v_cut-out"),
+    ]:
+        fig_dc.add_vline(
+            x=x_line,
+            line_dash="dot",
+            line_color="rgba(71,85,105,0.6)",
+            annotation_text=label,
+            annotation_position="top"
+        )
+else:
+    try:
+        fig_dc.add_vline(
+            x=float(rpm_rotor_rated),
+            line_dash="dot",
+            line_color="rgba(71,85,105,0.6)",
+            annotation_text="rpm_rotor_rated",
+            annotation_position="top"
+        )
+    except Exception:
+        pass
 fig_dc.update_layout(
-    title="Utilización del bus DC vs viento",
-    xaxis_title="v (m/s)",
+    title=title_dc,
+    xaxis_title=xaxis_title_dc,
     yaxis_title="Duty DC [%] (|P| / Vdc·Idc)",
     template="plotly_white",
     hovermode="x unified"
@@ -5156,6 +5926,7 @@ st.markdown("""
 st.markdown('<div id="alertas"></div>', unsafe_allow_html=True)
 st.subheader("🚨 Alertas de diseño / operación")
 question_prompt("¿Cuál de los márgenes (par, corriente, potencia o rpm) se acerca más al cero y requiere acciones inmediatas?")
+st.caption("Evaluación en región operativa IEC (v_cut_in–v_cut_out).")
 
 flag_entries = []
 
@@ -5164,25 +5935,6 @@ def add_flag(message, suggestion=None):
         "message": message,
         "suggestion": suggestion,
     })
-
-if T_gen_nom > 0:
-    over_pct = (max_T_gen - T_gen_nom) / T_gen_nom * 100
-    if over_pct > 5:
-        f_geom_tgen = (T_gen_nom / max_T_gen) ** (1/3) if max_T_gen > 0 else 1.0
-        G_target = G * (max_T_gen / T_gen_nom) if G > 0 else None
-        suggestion = []
-        if np.isfinite(f_geom_tgen):
-            suggestion.append(
-                f"Escala D/H por f ≈ {f_geom_tgen:.2f} (D {D*f_geom_tgen:.2f} m, H {H*f_geom_tgen:.2f} m)"
-            )
-        if G_target is not None and np.isfinite(G_target):
-            suggestion.append(f"Ajusta la relación G ≈ {G_target:.2f} (actual {G:.2f})")
-        add_flag(
-            f"⚠️ El par máximo en el generador ({max_T_gen:,.0f} N·m) "
-            f"supera el par nominal de ficha ({T_gen_nom:,.0f} N·m) "
-            f"en un {over_pct:,.0f} %. Revisa G, TSR objetivo o estrategia de control.",
-            " / ".join(suggestion) if suggestion else None
-        )
 
 if T_gen_max > 0 and max_T_gen > 1.05 * T_gen_max:
     f_geom_tmax = (T_gen_max / max_T_gen) ** (1/3) if max_T_gen > 0 else 1.0
@@ -5227,7 +5979,17 @@ try:
         rpm_target = rpm_rotor_rated * (rpm_rotor_max_iec / max_rpm_rot) if rpm_rotor_rated > 0 else rpm_rotor_max_iec
         suggestion = None
         if np.isfinite(rpm_target):
-            suggestion = f"Configura rpm_rotor_rated ≤ {rpm_target:.1f} rpm o baja λ_control para sostener rpm ≤ {rpm_rotor_max_iec:.1f}."
+            if control_mode == "MPPT (λ constante)":
+                lambda_target = lam_opt_ctrl * (rpm_rotor_max_iec / max_rpm_rot) if lam_opt_ctrl else None
+                if lambda_target and np.isfinite(lambda_target):
+                    suggestion = (
+                        f"Ajusta λ_control a ≤ {lambda_target:.2f} (actual {lam_opt_ctrl:.2f}) "
+                        f"para sostener rpm ≤ {rpm_rotor_max_iec:.1f}."
+                    )
+                else:
+                    suggestion = f"Reduce λ_control para sostener rpm ≤ {rpm_rotor_max_iec:.1f}."
+            else:
+                suggestion = f"Configura rpm_rotor_rated ≤ {rpm_target:.1f} rpm en el control de velocidad."
         add_flag(
             f"⚠️ La rpm máxima del rotor ({max_rpm_rot:.1f} rpm) excede el límite IEC configurado "
             f"rpm_rotor_max_iec = {rpm_rotor_max_iec:.1f} rpm. Ajusta el control de velocidad / shutdown.",
@@ -5297,9 +6059,9 @@ if P_nom_kW > 0 and max_P_out > 1.02 * P_nom_kW:
 
 margin_cards_data = [
     {
-        "label": "Margen T_gen vs T_nom",
-        "value": margen_Tgen_nom,
-        "help": "(T_nom - T_max) / T_nom. Valores negativos indican sobrecarga."
+        "label": "Margen T_gen vs IEC",
+        "value": margen_Tgen_iec,
+        "help": "(T_gen_max - T_max) / T_gen_max. Valores negativos indican sobrecarga."
     },
     {
         "label": "Margen T_rotor vs IEC",
@@ -5370,8 +6132,8 @@ alert_rows = [
     {
         "Indicador": "T_gen (N·m)",
         "Máximo": max_T_gen,
-        "Límite": T_gen_nom if T_gen_nom > 0 else np.nan,
-        "Uso_%": (max_T_gen / T_gen_nom * 100) if T_gen_nom > 0 else np.nan,
+        "Límite": T_gen_max if T_gen_max > 0 else np.nan,
+        "Uso_%": (max_T_gen / T_gen_max * 100) if T_gen_max > 0 else np.nan,
     },
     {
         "Indicador": "T_rotor (N·m)",
@@ -5582,7 +6344,7 @@ with colE2:
                 "H [m]": H,
                 "N palas": N,
                 "cuerda [m]": c,
-                "TSR objetivo": tsr,
+                "TSR ref": tsr_ref,
                 "G": G,
                 "η_mec": eta_mec,
                 "η_elec": eta_elec,
@@ -5625,7 +6387,7 @@ with colE2:
             "max_I_est": float(max_I_est),
             "max_M_base": float(max_M_base),
             "max_a_cen_g": float(max_g_pala),
-            "margen_Tgen_nom": float(margen_Tgen_nom),
+            "margen_Tgen_iec": float(margen_Tgen_iec),
             "margen_Trot_iec": float(margen_Trot_iec),
             "margen_I": float(margen_I),
             "margen_P": float(margen_P),
@@ -5640,13 +6402,14 @@ with colE2:
 if st.session_state["escenarios"]:
     section_header("Escenarios guardados en sesión", level=3)
     for i, esc in enumerate(st.session_state["escenarios"], start=1):
+        margen_tgen = esc.get("margen_Tgen_iec", esc.get("margen_Tgen_nom", np.nan))
         st.markdown(
             f"- **{i}. {esc['nombre']}** "
             f"({esc['gen_label']}, G={esc['inputs']['G']:.2f}) – "
             f"P_nom = {esc['P_nom_kW']:.1f} kW, "
             f"AEP = {esc['AEP_kWh']:,.0f} kWh/año, "
             f"CF = {esc['CF']*100:.1f} %, "
-            f"margen T_gen = {esc['margen_Tgen_nom']*100:.1f} %"
+            f"margen T_gen = {margen_tgen*100:.1f} %"
         )
 
 # =========================================================
@@ -5813,20 +6576,23 @@ else:
         # =======================
         section_header("Márgenes de diseño (par, corriente, potencia)", level=3)
 
+        margen_tgen_A = escA.get("margen_Tgen_iec", escA.get("margen_Tgen_nom", np.nan))
+        margen_tgen_B = escB.get("margen_Tgen_iec", escB.get("margen_Tgen_nom", np.nan))
+
         colM1, colM2, colM3 = st.columns(3)
         colM1.metric(
             f"Margen T_gen {escA_name}",
-            f"{escA['margen_Tgen_nom']*100:.1f} %",
-            help="(T_nom - T_max)/T_nom – A"
+            f"{margen_tgen_A*100:.1f} %",
+            help="(T_gen_max - T_max)/T_gen_max – A"
         )
         colM2.metric(
             f"Margen T_gen {escB_name}",
-            f"{escB['margen_Tgen_nom']*100:.1f} %",
-            help="(T_nom - T_max)/T_nom – B"
+            f"{margen_tgen_B*100:.1f} %",
+            help="(T_gen_max - T_max)/T_gen_max – B"
         )
         colM3.metric(
             "Δ margen T_gen (B - A)",
-            f"{(escB['margen_Tgen_nom']-escA['margen_Tgen_nom'])*100:.1f} pts",
+            f"{(margen_tgen_B-margen_tgen_A)*100:.1f} pts",
         )
 
         colM4, colM5, colM6 = st.columns(3)
@@ -6135,7 +6901,7 @@ st.subheader("📄 Descargar reporte técnico (PDF)")
 
 kpi_summary = (
     f"Geometría evaluada: D = {D:.1f} m, H = {H:.1f} m, N = {N} palas. "
-    f"TSR objetivo λ = {tsr:.2f}, solidez σ_int = {sig_int:.2f} (σ_conv ≈ {sig_conv:.2f}). "
+    f"TSR ref λ = {tsr_ref:.2f}, solidez σ_int = {sig_int:.2f} (σ_conv ≈ {sig_conv:.2f}). "
     f"Potencia nominal configurada: {P_nom_kW:.1f} kW; "
     f"relación de transmisión G = {G:.2f}; "
     f"η_mec ≈ {eta_mec:.3f}, η_elec ≈ {eta_elec:.3f}."

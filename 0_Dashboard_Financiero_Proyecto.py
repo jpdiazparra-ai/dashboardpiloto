@@ -10,6 +10,7 @@
 
 import io
 import re
+import unicodedata
 import datetime as dt
 import pandas as pd
 import numpy as np
@@ -26,6 +27,23 @@ PALETTE_SM = {
     "I+D":        "#6366F1",   # indigo
     "Montaje":    "#F59E0B",   # amber
 }
+STAGE_COLOR_MAP = {
+    "1-Investigación": "#2563EB",  # blue
+    "2-Desarrollo": "#94A3B8",     # slate
+    "3-Piloto": "#94A3B8",         # slate
+}
+DONUT_SUBITEM_COLORS = [
+    "#0F766E",  # deep teal
+    "#E9C46A",  # warm sand
+    "#6D597A",  # muted plum
+    "#EE6C4D",  # coral
+    "#3D5A80",  # slate blue
+    "#2A9D8F",  # green teal
+    "#BC6C25",  # bronze
+    "#8ECAE6",  # soft sky
+    "#90BE6D",  # olive green
+    "#B56576",  # dusty rose
+]
 
 
 DEFAULT_CSV_URL = (
@@ -379,6 +397,129 @@ def render_main_kpi_cards(df_in: pd.DataFrame, presupuesto_total: float | None =
     st.markdown(cards, unsafe_allow_html=True)
 
 
+def _normalize_col_name(name: str) -> str:
+    txt = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "", txt.lower())
+
+
+def find_investment_col(df: pd.DataFrame) -> str | None:
+    for col in df.columns:
+        if _normalize_col_name(col) in {"inversion", "inversionista", "inversor"}:
+            return col
+    return None
+
+
+def render_investment_kpi_cards(df_in: pd.DataFrame):
+    inv_col = find_investment_col(df_in)
+    if inv_col is None or "Monto" not in df_in.columns:
+        return
+
+    tmp = df_in[[inv_col, "Monto"]].copy()
+    tmp[inv_col] = tmp[inv_col].astype(str).str.strip().replace({"": np.nan, "nan": np.nan})
+    tmp["Monto_num"] = tmp["Monto"].apply(_to_num_strict)
+    tmp = tmp.dropna(subset=[inv_col, "Monto_num"]).copy()
+    if tmp.empty:
+        return
+
+    resumen = (
+        tmp.groupby(inv_col, as_index=False)["Monto_num"]
+        .sum()
+        .sort_values("Monto_num", ascending=False)
+        .reset_index(drop=True)
+    )
+    total_visible = float(resumen["Monto_num"].sum() or 0)
+
+    st.markdown("### 🏦 Inversión por inversionista")
+    st.caption(f"Montos totales según la columna `{inv_col}` dentro de la vista filtrada actual.")
+    st.markdown(
+        """
+        <style>
+          .inv-kpi-card{
+            border-radius:16px;padding:16px 18px;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 62%);
+            border:1px solid rgba(148,163,184,.35);box-shadow:0 6px 14px rgba(15,23,42,.06)
+          }
+          .inv-kpi-name{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:.15px;margin:0 0 8px}
+          .inv-kpi-value{font-size:28px;font-weight:800;color:#0f172a;line-height:1.05;margin:0 0 8px}
+          .inv-kpi-sub{font-size:12px;color:#475569}
+          .inv-kpi-bar{position:relative;width:100%;height:8px;border-radius:999px;background:#e2e8f0;margin-top:10px;overflow:hidden}
+          .inv-kpi-bar>span{position:absolute;left:0;top:0;height:100%;border-radius:999px;background:linear-gradient(90deg,#0EA5A4 0%,#2563EB 100%)}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(min(4, max(1, len(resumen))))
+    for idx, (_, row) in enumerate(resumen.iterrows()):
+        pct = (float(row["Monto_num"]) / total_visible * 100.0) if total_visible > 0 else 0.0
+        with cols[idx % len(cols)]:
+            st.markdown(
+                f"""
+            <div class="inv-kpi-card">
+              <div class="inv-kpi-name">{row[inv_col]}</div>
+              <div class="inv-kpi-value">{_money_fmt(row['Monto_num'])}</div>
+              <div class="inv-kpi-sub">{pct:.1f}% del monto visible</div>
+              <div class="inv-kpi-bar"><span style="width:{pct:.6f}%"></span></div>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+
+def render_payment_status_kpi_cards(df_in: pd.DataFrame):
+    if "Estado de pago" not in df_in.columns or "Monto" not in df_in.columns:
+        return
+
+    tmp = df_in[["Estado de pago", "Monto"]].copy()
+    tmp["Estado de pago"] = tmp["Estado de pago"].astype(str).str.strip().replace({"": np.nan, "nan": np.nan})
+    tmp["Monto_num"] = tmp["Monto"].apply(_to_num_strict)
+    tmp = tmp.dropna(subset=["Estado de pago", "Monto_num"]).copy()
+    if tmp.empty:
+        return
+
+    resumen = (
+        tmp.groupby("Estado de pago", as_index=False)["Monto_num"]
+        .sum()
+        .sort_values("Monto_num", ascending=False)
+        .reset_index(drop=True)
+    )
+    total_visible = float(resumen["Monto_num"].sum() or 0)
+
+    st.markdown("### 💳 Estado de pago")
+    st.caption("Montos totales por estado de pago dentro de la vista filtrada actual.")
+    st.markdown(
+        """
+        <style>
+          .pay-kpi-card{
+            border-radius:16px;padding:16px 18px;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 62%);
+            border:1px solid rgba(148,163,184,.35);box-shadow:0 6px 14px rgba(15,23,42,.06)
+          }
+          .pay-kpi-name{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:.15px;margin:0 0 8px}
+          .pay-kpi-value{font-size:28px;font-weight:800;color:#0f172a;line-height:1.05;margin:0 0 8px}
+          .pay-kpi-sub{font-size:12px;color:#475569}
+          .pay-kpi-bar{position:relative;width:100%;height:8px;border-radius:999px;background:#e2e8f0;margin-top:10px;overflow:hidden}
+          .pay-kpi-bar>span{position:absolute;left:0;top:0;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563EB 0%,#0EA5A4 100%)}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(min(4, max(1, len(resumen))))
+    for idx, (_, row) in enumerate(resumen.iterrows()):
+        pct = (float(row["Monto_num"]) / total_visible * 100.0) if total_visible > 0 else 0.0
+        with cols[idx % len(cols)]:
+            st.markdown(
+                f"""
+            <div class="pay-kpi-card">
+              <div class="pay-kpi-name">{row['Estado de pago']}</div>
+              <div class="pay-kpi-value">{_money_fmt(row['Monto_num'])}</div>
+              <div class="pay-kpi-sub">{pct:.1f}% del monto visible</div>
+              <div class="pay-kpi-bar"><span style="width:{pct:.6f}%"></span></div>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+
+
 def charts_block(df):
     st.markdown("### 📈 Gráficos")
     base = df.copy()
@@ -389,9 +530,30 @@ def charts_block(df):
     if "Etapa" in base.columns and base["Etapa"].notna().any():
         orden_etapas = ["1-Investigación", "2-Desarrollo", "3-Piloto"]
 
-        g_etapa = (base.groupby("Etapa", as_index=False)["Monto"].sum())
-        g_etapa["Etapa_orden"] = g_etapa["Etapa"].apply(lambda x: orden_etapas.index(x) if x in orden_etapas else 999)
-        g_etapa = g_etapa.sort_values(["Etapa_orden","Monto"], ascending=[True, False]).drop(columns="Etapa_orden")
+        base_etapa = base.copy()
+        base_etapa["Etapa"] = (
+            base_etapa["Etapa"]
+            .astype(str)
+            .str.strip()
+            .replace({"nan": np.nan})
+        )
+        base_etapa = base_etapa[base_etapa["Etapa"].notna()].copy()
+        base_etapa["Etapa"] = base_etapa["Etapa"].apply(
+            lambda x: next((et for et in orden_etapas if x.startswith(et.split("-")[0])), x)
+        )
+
+        g_etapa = (
+            base_etapa.groupby("Etapa", as_index=False, sort=False)["Monto"]
+            .sum()
+        )
+        g_etapa["Etapa_orden"] = g_etapa["Etapa"].apply(
+            lambda x: orden_etapas.index(x) if x in orden_etapas else 999
+        )
+        g_etapa = (
+            g_etapa.sort_values(["Etapa_orden", "Monto"], ascending=[True, False])
+            .drop(columns="Etapa_orden")
+            .reset_index(drop=True)
+        )
 
         total_etapas = float(g_etapa["Monto"].sum() or 0)
         g_etapa["%"] = (g_etapa["Monto"] / total_etapas * 100.0).round(2) if total_etapas>0 else 0.0
@@ -404,19 +566,16 @@ def charts_block(df):
 
         if not ver_pct:
             # Monto CLP
+            bar_colors = g_etapa["Etapa"].astype(str).map(STAGE_COLOR_MAP).fillna("#94A3B8")
             fig1 = px.bar(
                 g_etapa, x="Monto", y="Etapa", orientation="h",
-                color="Etapa",
-                color_discrete_map={
-                    "1-Investigación": "#60A5FA",  # azul claro
-                    "2-Desarrollo":    "#34D399",  # green
-                    "3-Piloto":        "#0EA5A4",  # teal
-                },
                 text="label",
                 title="Distribución de Monto por Etapa",
             )
             fig1.update_traces(
+                marker_color=bar_colors,
                 textposition="outside",
+                textfont=dict(color="#64748B", size=12),
                 hovertemplate="<b>%{y}</b><br>Monto: $%{x:,.0f}<br>Participación: %{customdata:.2f}%<extra></extra>",
                 customdata=g_etapa["%"],
             )
@@ -428,19 +587,16 @@ def charts_block(df):
             # 100% stacked style (pero por etapa individual)
             g_pct = g_etapa.copy()
             g_pct["%"] = g_pct["%"].round(2)
+            bar_colors = g_pct["Etapa"].astype(str).map(STAGE_COLOR_MAP).fillna("#94A3B8")
             fig1 = px.bar(
                 g_pct, x="%", y="Etapa", orientation="h",
-                color="Etapa",
-                color_discrete_map={
-                    "1-Investigación": "#60A5FA",
-                    "2-Desarrollo":    "#34D399",
-                    "3-Piloto":        "#0EA5A4",
-                },
                 text=g_pct["%"].map(lambda v: f"{v:.2f}%"),
                 title="Distribución por Etapa — % del total",
             )
             fig1.update_traces(
+                marker_color=bar_colors,
                 textposition="outside",
+                textfont=dict(color="#64748B", size=12),
                 hovertemplate="<b>%{y}</b><br>Participación: %{x:.2f}%<extra></extra>",
             )
             fig1.update_xaxes(range=[0,100], title="% del total")
@@ -449,10 +605,14 @@ def charts_block(df):
         fig1.update_layout(
             plot_bgcolor="white",
             paper_bgcolor="rgba(0,0,0,0)",
-            legend_title="Etapa",
+            showlegend=False,
             margin=dict(l=90, r=30, t=60, b=40),
         )
-        fig1.update_yaxes(title="Categoría", showgrid=False)
+        fig1.update_yaxes(
+            title="Categoría",
+            showgrid=False,
+            autorange="reversed",
+        )
         fig1.add_annotation(
             xref="paper", yref="paper", x=0, y=1.12, showarrow=False,
             text=f"<span style='font-size:13px;color:#475569'>Total: {_money_fmt(total_etapas)}</span>"
@@ -690,7 +850,20 @@ def render_sm_kpi_cards(tabla_sm):
     cards.append("</div>")
     st.markdown("".join(cards), unsafe_allow_html=True)
 
-    
+def ensure_sm_category_state(df_in: pd.DataFrame):
+    """Inicializa y sanea el filtro global de categorías S/M para todas las pestañas."""
+    cat_col = "Suministro / montaje"
+    if cat_col not in df_in.columns:
+        return []
+
+    cats_all = sorted(df_in[cat_col].dropna().astype(str).str.strip().unique().tolist())
+    if "cats_sm_sel" not in st.session_state:
+        st.session_state["cats_sm_sel"] = cats_all
+    else:
+        current = [c for c in st.session_state["cats_sm_sel"] if c in cats_all]
+        st.session_state["cats_sm_sel"] = current or cats_all
+    return cats_all
+
 
 # ============================
 # Flujo principal
@@ -708,25 +881,11 @@ if "Monto" in df.columns:
 etapa_sel, estado_sel, prov_sel, rango_fechas, query_txt = filters
 df_f = apply_filters(df, etapa_sel, estado_sel, prov_sel, rango_fechas, query_txt)
 base = df_f if len(df_f) else df
+ensure_sm_category_state(base)
 
-render_main_kpi_cards(base, presupuesto_total=None)
-charts_block(base)
-
-# 👉 Bloque Suministro/Montaje (antes de la tabla)
-st.markdown("### 📊 I+D - Suministros - Montaje  ")
-fig_sm, tabla_sm = make_suministro_chart(base)
-if fig_sm is None or tabla_sm is None or tabla_sm.empty:
-    st.info("No hay datos válidos para graficar Suministro / Montaje.")
-else:
-    render_sm_kpi_cards(tabla_sm)                 # KPI cards estilizadas
-    st.plotly_chart(fig_sm, use_container_width=True)
-
-# Tabla general (OCULTA)
-# table_block(base)
-
-# Notas (OCULTAS)
-# with st.expander("ℹ️ Notas"):
-#     st.markdown(""" ... """)
+tab_resumen, tab_categoria, tab_items, tab_explorador = st.tabs(
+    ["📌 Resumen ejecutivo", "📂 Por categoría", "📄 Detalle de ítems", "🔎 Explorador interactivo"]
+)
 
 # ===============================
 # Bloque: Analítica por ITEM (con interacción Suministro/Montaje)
@@ -875,21 +1034,81 @@ def _render_cat_summary_pills(df2, cat_col: str):
     st.markdown(css + f'<div class="pill-wrap">{"".join(html_items)}</div>', unsafe_allow_html=True)
 
 
-def render_item_analytics(df_in):
-    import numpy as np
-    import pandas as pd
-    import plotly.express as px
-    import streamlit as st
+def render_subitem_donut_grid(df_plot: pd.DataFrame, item_field: str, subitem_field: str, item_summary: pd.DataFrame):
+    if subitem_field not in df_plot.columns:
+        return
 
-    # --- Resolver nombres de columnas
+    donuts = []
+    for item_name in item_summary[item_field].tolist():
+        item_df = df_plot[df_plot[item_field] == item_name].copy()
+        if item_df.empty:
+            continue
+
+        item_df[subitem_field] = (
+            item_df[subitem_field].astype(str).str.strip()
+            .replace({"nan": np.nan, "None": np.nan, "": np.nan})
+            .fillna("(Sin sub-item)")
+        )
+        sub_agg = (item_df.groupby(subitem_field, as_index=False)
+                          .agg(Monto=("Monto_num", "sum"))
+                          .sort_values("Monto", ascending=False))
+        if sub_agg.empty:
+            continue
+
+        pct_item = float(
+            item_summary.loc[item_summary[item_field] == item_name, "% del total"].iloc[0]
+        )
+        fig_donut = px.pie(
+            sub_agg,
+            names=subitem_field,
+            values="Monto",
+            hole=0.68,
+            color_discrete_sequence=DONUT_SUBITEM_COLORS,
+        )
+        fig_donut.update_traces(
+            textinfo="percent",
+            textfont_size=11,
+            hovertemplate="<b>%{label}</b><br>Monto: $%{value:,.0f}<br>Participación: %{percent}<extra></extra>"
+        )
+        fig_donut.update_layout(
+            title=dict(text=str(item_name), x=0.12, font=dict(size=15, color="#0f172a")),
+            margin=dict(l=10, r=10, t=52, b=10),
+            height=360,
+            legend=dict(
+                orientation="v",
+                yanchor="middle", y=0.5,
+                xanchor="left", x=1.02,
+                font=dict(size=11)
+            ),
+            annotations=[dict(
+                text=f"{pct_item:.1f}%<br><span style='font-size:11px'>del total</span>",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color="#111827")
+            )],
+        )
+        donuts.append(fig_donut)
+
+    if not donuts:
+        return
+
+    st.markdown("### 🧩 Sub-items por item")
+    st.caption("Cada dona muestra la composición interna del item según sus sub-items, respetando los filtros activos.")
+    for start in range(0, len(donuts), 3):
+        cols = st.columns(min(3, len(donuts) - start))
+        for col, fig_donut in zip(cols, donuts[start:start + 3]):
+            with col:
+                st.plotly_chart(fig_donut, use_container_width=True)
+
+
+def get_item_analysis_context(df_in):
     cols_norm = {c.strip().lower(): c for c in df_in.columns}
-    item_col  = cols_norm.get("item", "item")
-    cat_col   = (cols_norm.get("suministro / montaje")
-                 or cols_norm.get("suministro/montaje")
-                 or "Suministro / montaje")
+    item_col = cols_norm.get("item", "item")
+    subitem_col = cols_norm.get("sub-item", "Sub-item")
+    cat_col = (cols_norm.get("suministro / montaje")
+               or cols_norm.get("suministro/montaje")
+               or "Suministro / montaje")
     monto_col = cols_norm.get("monto", "Monto")
 
-    # --- Base y conversión de montos
     df = df_in.copy()
     try:
         df["Monto_num"] = df[monto_col].apply(_to_num_strict)
@@ -908,6 +1127,17 @@ def render_item_analytics(df_in):
         df[cat_col] = (df[cat_col].astype(str).str.strip()
                        .replace({"nan": np.nan, "None": np.nan, "": np.nan})
                        .fillna("(Sin categoría)"))
+    return df, item_col, subitem_col, cat_col
+
+
+def render_item_analytics(df_in):
+    import numpy as np
+    import pandas as pd
+    import plotly.express as px
+    import streamlit as st
+
+    # --- Resolver nombres de columnas
+    df, item_col, _subitem_col, cat_col = get_item_analysis_context(df_in)
 
        # --- Controles UI (mejorados)
     st.markdown("### 🧩 Análisis por **Categorías**")
@@ -1018,13 +1248,56 @@ def render_item_analytics(df_in):
         st.info("No hay datos para los filtros seleccionados.")
 
 
-# ======= Ejecuta el bloque de Análisis por Item =======
-render_item_analytics(base)
+with tab_resumen:
+    render_main_kpi_cards(base, presupuesto_total=None)
+    charts_block(base)
+
+with tab_categoria:
+    st.markdown("### 📊 I+D - Suministros - Montaje")
+    fig_sm, tabla_sm = make_suministro_chart(base)
+    if fig_sm is None or tabla_sm is None or tabla_sm.empty:
+        st.info("No hay datos válidos para graficar Suministro / Montaje.")
+    else:
+        render_sm_kpi_cards(tabla_sm)
+        st.plotly_chart(fig_sm, use_container_width=True)
+
+with tab_categoria:
+    render_item_analytics(base)
+
+with tab_items:
+    df_item_detail, item_col_detail, subitem_col_detail, cat_col_detail = get_item_analysis_context(base)
+    cats_sel_detail = st.session_state.get("cats_sm_sel", sorted(df_item_detail[cat_col_detail].dropna().unique()))
+    df_item_detail = df_item_detail[df_item_detail[cat_col_detail].isin(cats_sel_detail)].copy()
+    if not df_item_detail.empty:
+        resumen_item_detail = (df_item_detail.groupby(item_col_detail, as_index=False)
+                                         .agg(Monto=("Monto_num", "sum"),
+                                              Items=("Monto_num", "count"),
+                                              Promedio=("Monto_num", "mean")))
+        resumen_item_detail["% del total"] = (
+            resumen_item_detail["Monto"] / resumen_item_detail["Monto"].sum() * 100
+        ).round(2)
+        resumen_item_detail = resumen_item_detail.sort_values("Monto", ascending=False).head(15)
+        render_subitem_donut_grid(
+            df_item_detail[df_item_detail[item_col_detail].isin(resumen_item_detail[item_col_detail])].copy(),
+            item_col_detail,
+            subitem_col_detail,
+            resumen_item_detail,
+        )
+    st.markdown("### 📄 Detalle complementario de ítems")
+    st.caption("Esta pestaña conserva el detalle tabular y los factores necesarios asociados a los ítems filtrados.")
+
+with tab_explorador:
+    render_investment_kpi_cards(base)
+    render_payment_status_kpi_cards(base)
+    table_block(base)
+    st.markdown("### 🧭 Factores y exploración avanzada")
+
 # ===============================
 # NUEVO — Tabla Factor × Item (elegante, autosuficiente)
 # ===============================
 
-st.markdown("""
+with tab_explorador:
+    st.markdown("""
 <style>
   .fxi-card{border-radius:18px;padding:14px 16px;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 62%);
             border:1px solid rgba(148,163,184,.35);box-shadow:0 6px 14px rgba(15,23,42,.06);margin-top:8px}
@@ -1042,9 +1315,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div class='fxi-card'><div class='fxi-head'>"
-            "<h3 style='margin:0'>🧮 ¿Que factores son Necesario y Evitables para un próximo Piloto?</h3>"
-            "</div>", unsafe_allow_html=True)
+    st.markdown("<div class='fxi-card'><div class='fxi-head'>"
+                "<h3 style='margin:0'>🧮 ¿Que factores son Necesario y Evitables para un próximo Piloto?</h3>"
+                "</div>", unsafe_allow_html=True)
 
 # -------- Calcular agg directamente aquí --------
 df_cost = base.copy()
@@ -1128,47 +1401,48 @@ df_display["Monto total (CLP)"] = df_display["Monto total (CLP)"].apply(_fmt_chi
 df_display = df_display[["Factor", "Item", "Ítems", "Monto total (CLP)", "Justificación Nece - Evit"]]
 
 # --- Tabla (compacta, solo hasta Monto total + justificación) ---
-st.dataframe(
-    df_display,
-    use_container_width=True,
-    height=460,
-    hide_index=True,
-    column_config={
-        "Factor": st.column_config.TextColumn("Factor", width="medium"),
-        "Item": st.column_config.TextColumn("Item", width="medium"),
-        "Ítems": st.column_config.NumberColumn("Ítems", width="small", format="%d"),
-        "Monto total (CLP)": st.column_config.TextColumn("Monto total (CLP)", width="small"),
-        "Justificación Nece - Evit": st.column_config.TextColumn(
-            "Justificación Nece - Evit", width="large",
-            help="Motivo asociado al Factor (Necesario/Evitable) por Item"
-        ),
-    }
-)
+with tab_explorador:
+    st.dataframe(
+        df_display,
+        use_container_width=True,
+        height=460,
+        hide_index=True,
+        column_config={
+            "Factor": st.column_config.TextColumn("Factor", width="medium"),
+            "Item": st.column_config.TextColumn("Item", width="medium"),
+            "Ítems": st.column_config.NumberColumn("Ítems", width="small", format="%d"),
+            "Monto total (CLP)": st.column_config.TextColumn("Monto total (CLP)", width="small"),
+            "Justificación Nece - Evit": st.column_config.TextColumn(
+                "Justificación Nece - Evit", width="large",
+                help="Motivo asociado al Factor (Necesario/Evitable) por Item"
+            ),
+        }
+    )
 
-# --- Chips por Factor (Necesario vs Evitable) usando Monto_num ---
-_tmp = df_cost.copy()
-_tmp["__fac"] = (
-    _tmp["Factor de costo"].fillna("").astype(str).str.strip().str.lower()
-)
-_tmp["__NE"] = np.where(
-    _tmp["__fac"].str.contains("necesar"), "Necesario",
-    np.where(_tmp["__fac"].str.contains("evit"), "Evitable", "Otro")
-)
+    # --- Chips por Factor (Necesario vs Evitable) usando Monto_num ---
+    _tmp = df_cost.copy()
+    _tmp["__fac"] = (
+        _tmp["Factor de costo"].fillna("").astype(str).str.strip().str.lower()
+    )
+    _tmp["__NE"] = np.where(
+        _tmp["__fac"].str.contains("necesar"), "Necesario",
+        np.where(_tmp["__fac"].str.contains("evit"), "Evitable", "Otro")
+    )
 
-tot_nec = float(_tmp.loc[_tmp["__NE"]=="Necesario", "Monto_num"].sum() or 0.0)
-tot_evi = float(_tmp.loc[_tmp["__NE"]=="Evitable", "Monto_num"].sum() or 0.0)
-tot_all = tot_nec + tot_evi
+    tot_nec = float(_tmp.loc[_tmp["__NE"]=="Necesario", "Monto_num"].sum() or 0.0)
+    tot_evi = float(_tmp.loc[_tmp["__NE"]=="Evitable", "Monto_num"].sum() or 0.0)
+    tot_all = tot_nec + tot_evi
 
-pct_nec = (tot_nec / tot_all * 100.0) if tot_all > 0 else 0.0
-pct_evi = (tot_evi / tot_all * 100.0) if tot_all > 0 else 0.0
+    pct_nec = (tot_nec / tot_all * 100.0) if tot_all > 0 else 0.0
+    pct_evi = (tot_evi / tot_all * 100.0) if tot_all > 0 else 0.0
 
-st.markdown(
-    f"<div style='display:flex;gap:8px;margin-top:10px'>"
-    f"<span class='chip chip--ok'>Necesario: {_money_fmt(tot_nec)} · {pct_nec:.2f}%</span>"
-    f"<span class='chip'>Evitable: {_money_fmt(tot_evi)} · {pct_evi:.2f}%</span>"
-    f"</div>",
-    unsafe_allow_html=True
-)
+    st.markdown(
+        f"<div style='display:flex;gap:8px;margin-top:10px'>"
+        f"<span class='chip chip--ok'>Necesario: {_money_fmt(tot_nec)} · {pct_nec:.2f}%</span>"
+        f"<span class='chip'>Evitable: {_money_fmt(tot_evi)} · {pct_evi:.2f}%</span>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
 
 
 # ===============================
@@ -1176,245 +1450,230 @@ st.markdown(
 # Barras apiladas por Factor, coloreadas por "Suministro / montaje"
 # Muestra CLP + % dentro del Factor y %_esc por segmento
 # ===============================
-st.markdown("### 📊 Factor Necesario vs Evitable")
+with tab_categoria:
+    st.markdown("### 📊 Factor Necesario vs Evitable")
 
-_fac_col = "Factor de costo"
-_cat_col = "Suministro / montaje"
+    _fac_col = "Factor de costo"
+    _cat_col = "Suministro / montaje"
 
-if (_fac_col not in df_cost.columns) or (_cat_col not in df_cost.columns):
-    st.info("Faltan columnas 'Factor de costo' o 'Suministro / montaje' para construir el gráfico.")
-else:
-    fac_cat = (df_cost.copy()
-               .assign(
-                   Factor=df_cost[_fac_col].fillna("Sin clasificar").astype(str).str.strip(),
-                   Categoria=df_cost[_cat_col].fillna("(Sin categoría)").astype(str).str.strip()
-               ))
-
-    # Enfocarnos en Necesario/Evitable y categorías S/M/I+D
-    fac_cat = fac_cat[fac_cat["Factor"].str.lower() != "sin clasificar"]
-    # normalizar nombres típicos
-    fac_cat["Categoria"] = fac_cat["Categoria"].replace({
-        "Suministro/montaje": "Montaje",
-        "I + D": "I+D",
-        "i+d": "I+D",
-    })
-
-    if fac_cat.empty:
-        st.info("No hay datos clasificados como 'Necesario' o 'Evitable'.")
+    if (_fac_col not in df_cost.columns) or (_cat_col not in df_cost.columns):
+        st.info("Faltan columnas 'Factor de costo' o 'Suministro / montaje' para construir el gráfico.")
     else:
-        aggFC = (fac_cat.groupby(["Factor","Categoria"], as_index=False)
-                        .agg(Monto=("Monto_num","sum"),
-                             PrecioEsc=("Precio_final_num","sum"),
-                             Items=("Monto_num","count")))
+        fac_cat = (df_cost.copy()
+                   .assign(
+                       Factor=df_cost[_fac_col].fillna("Sin clasificar").astype(str).str.strip(),
+                       Categoria=df_cost[_cat_col].fillna("(Sin categoría)").astype(str).str.strip()
+                   ))
+        fac_cat = fac_cat[fac_cat["Factor"].str.lower() != "sin clasificar"]
+        fac_cat["Categoria"] = fac_cat["Categoria"].replace({
+            "Suministro/montaje": "Montaje",
+            "I + D": "I+D",
+            "i+d": "I+D",
+        })
 
-        # %_esc por segmento (PrecioEsc / Monto)
-        aggFC["%_esc"] = np.where(aggFC["Monto"] > 0,
-                                  (aggFC["PrecioEsc"]/aggFC["Monto"]*100).round(2),
-                                  np.nan)
-
-        # % dentro de cada Factor (participación del segmento dentro del total del Factor)
-        tot_por_factor = aggFC.groupby("Factor")["Monto"].transform("sum")
-        aggFC["% dentro del Factor"] = np.where(tot_por_factor > 0,
-                                                (aggFC["Monto"]/tot_por_factor*100).round(2),
-                                                0.0)
-
-        # Orden de Factor y de Categoría
-        orden_factor = ["Necesario", "Evitable"]
-        orden_cat    = ["Suministro", "I+D", "Montaje"]
-        aggFC["__of"] = aggFC["Factor"].apply(lambda x: orden_factor.index(x) if x in orden_factor else 999)
-        aggFC["__oc"] = aggFC["Categoria"].apply(lambda x: orden_cat.index(x) if x in orden_cat else 999)
-        aggFC = aggFC.sort_values(["__of","__oc"]).drop(columns=["__of","__oc"])
-
-        # Etiquetas compactas (CLP + % dentro del Factor)
-        def _abbr_money(x: float) -> str:
-            if x is None or (isinstance(x,float) and (np.isnan(x) or np.isinf(x))): return ""
-            if abs(x) >= 1_000_000_000: return f"${x/1_000_000_000:,.2f}B"
-            if abs(x) >= 1_000_000:     return f"${x/1_000_000:,.2f}M"
-            if abs(x) >= 1_000:         return f"${x/1_000:,.0f}K"
-            return f"${x:,.0f}"
-
-        aggFC["label"] = aggFC.apply(
-            lambda r: f"{_abbr_money(r['Monto'])} · {r['% dentro del Factor']:.2f}%",
-            axis=1
-        )
-
-        # Colores consistentes con todo el dashboard
-        color_map = PALETTE_SM  # {"Suministro": teal, "I+D": indigo, "Montaje": amber}
-
-        figFC = px.bar(
-            aggFC,
-            x="Monto", y="Factor", orientation="h",
-            color="Categoria", color_discrete_map=color_map,
-            text="label",
-            title="Montos Necesarios para un nuevo Piloto con el know How "
-        )
-
-        figFC.update_traces(
-            textposition="inside",
-            insidetextanchor="middle",
-            cliponaxis=False,
-            hovertemplate=(
-                "<b>%{y}</b> · %{trace.name}<br>"
-                "Monto seg.: $%{x:,.0f}<br>"
-                "Participación en Factor: %{customdata[0]:.2f}%<br>"
-                "%_esc seg.: %{customdata[1]:.2f}%<br>"
-                "Ítems seg.: %{customdata[2]}<extra></extra>"
-            ),
-            customdata=np.stack([
-                aggFC["% dentro del Factor"],
-                aggFC["%_esc"],
-                aggFC["Items"]
-            ], axis=-1)
-        )
-
-        figFC.update_layout(
-            barmode="stack",
-            margin=dict(l=130, r=40, t=60, b=40),
-            plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
-            legend_title="Categoría (S/M/I+D)"
-        )
-        figFC.update_xaxes(separatethousands=True, tickprefix="$", gridcolor=GRID)
-        figFC.update_yaxes(title="Factor", showgrid=False)
-
-        # Anotar total por Factor al final de cada barra
-        tot_factor_num = aggFC.groupby("Factor", as_index=False)["Monto"].sum()
-        for _, r in tot_factor_num.iterrows():
-            figFC.add_annotation(
-                x=r["Monto"], y=r["Factor"], xanchor="left", yanchor="middle",
-                text=_abbr_money(r["Monto"]), showarrow=False,
-                font=dict(size=11, color="#475569"), xshift=10
+        if fac_cat.empty:
+            st.info("No hay datos clasificados como 'Necesario' o 'Evitable'.")
+        else:
+            aggFC = (fac_cat.groupby(["Factor", "Categoria"], as_index=False)
+                            .agg(Monto=("Monto_num", "sum"),
+                                 PrecioEsc=("Precio_final_num", "sum"),
+                                 Items=("Monto_num", "count")))
+            aggFC["%_esc"] = np.where(
+                aggFC["Monto"] > 0,
+                (aggFC["PrecioEsc"] / aggFC["Monto"] * 100).round(2),
+                np.nan
             )
 
-        st.plotly_chart(figFC, use_container_width=True)
+            tot_por_factor = aggFC.groupby("Factor")["Monto"].transform("sum")
+            aggFC["% dentro del Factor"] = np.where(
+                tot_por_factor > 0,
+                (aggFC["Monto"] / tot_por_factor * 100).round(2),
+                0.0
+            )
+
+            orden_factor = ["Necesario", "Evitable"]
+            orden_cat = ["Suministro", "I+D", "Montaje"]
+            aggFC["__of"] = aggFC["Factor"].apply(lambda x: orden_factor.index(x) if x in orden_factor else 999)
+            aggFC["__oc"] = aggFC["Categoria"].apply(lambda x: orden_cat.index(x) if x in orden_cat else 999)
+            aggFC = aggFC.sort_values(["__of", "__oc"]).drop(columns=["__of", "__oc"])
+
+            def _abbr_money(x: float) -> str:
+                if x is None or (isinstance(x, float) and (np.isnan(x) or np.isinf(x))):
+                    return ""
+                if abs(x) >= 1_000_000_000:
+                    return f"${x/1_000_000_000:,.2f}B"
+                if abs(x) >= 1_000_000:
+                    return f"${x/1_000_000:,.2f}M"
+                if abs(x) >= 1_000:
+                    return f"${x/1_000:,.0f}K"
+                return f"${x:,.0f}"
+
+            aggFC["label"] = aggFC.apply(
+                lambda r: f"{_abbr_money(r['Monto'])} · {r['% dentro del Factor']:.2f}%",
+                axis=1
+            )
+
+            figFC = px.bar(
+                aggFC,
+                x="Monto", y="Factor", orientation="h",
+                color="Categoria", color_discrete_map=PALETTE_SM,
+                text="label",
+                title="Montos necesarios para un nuevo piloto"
+            )
+            figFC.update_traces(
+                textposition="inside",
+                insidetextanchor="middle",
+                cliponaxis=False,
+                hovertemplate=(
+                    "<b>%{y}</b> · %{trace.name}<br>"
+                    "Monto seg.: $%{x:,.0f}<br>"
+                    "Participación en Factor: %{customdata[0]:.2f}%<br>"
+                    "%_esc seg.: %{customdata[1]:.2f}%<br>"
+                    "Ítems seg.: %{customdata[2]}<extra></extra>"
+                ),
+                customdata=np.stack([
+                    aggFC["% dentro del Factor"],
+                    aggFC["%_esc"],
+                    aggFC["Items"]
+                ], axis=-1)
+            )
+            figFC.update_layout(
+                barmode="stack",
+                margin=dict(l=130, r=40, t=60, b=40),
+                plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
+                legend_title="Categoría (S/M/I+D)"
+            )
+            figFC.update_xaxes(separatethousands=True, tickprefix="$", gridcolor=GRID)
+            figFC.update_yaxes(title="Factor", showgrid=False)
+
+            tot_factor_num = aggFC.groupby("Factor", as_index=False)["Monto"].sum()
+            for _, r in tot_factor_num.iterrows():
+                figFC.add_annotation(
+                    x=r["Monto"], y=r["Factor"], xanchor="left", yanchor="middle",
+                    text=_abbr_money(r["Monto"]), showarrow=False,
+                    font=dict(size=11, color="#475569"), xshift=10
+                )
+
+            st.plotly_chart(figFC, use_container_width=True)
 
 # ===============================
 # REEMPLAZO — Gráfico PRO (Monto inicial vs. Precio escalado)
 # Evita sobreposición y muestra montos formateados + %_esc
 # ===============================
-st.markdown("### 📊 Economias de escalas para una etapa comercial ")
+with tab_categoria:
+    st.markdown("### 📊 Economias de escalas para una etapa comercial ")
 
-import plotly.graph_objects as go
+    import plotly.graph_objects as go
 
-# --- Base alineada a filtros activos (mismo patrón que el bloque anterior)
-_df = base.copy()
-_cat = "Suministro / montaje"
-if _cat not in _df.columns:
-    _df[_cat] = "Total"
+    _df = base.copy()
+    _cat = "Suministro / montaje"
+    if _cat not in _df.columns:
+        _df[_cat] = "Total"
 
-_cats_sel = st.session_state.get("cats_sm_sel", sorted(_df[_cat].dropna().unique()))
-if _cats_sel:
-    _df = _df[_df[_cat].isin(_cats_sel)]
+    _cats_sel = st.session_state.get("cats_sm_sel", sorted(_df[_cat].dropna().unique()))
+    if _cats_sel:
+        _df = _df[_df[_cat].isin(_cats_sel)]
 
-for c in ["Monto", "Precio final ec esc"]:
-    if c not in _df.columns:
-        _df[c] = np.nan
+    for c in ["Monto", "Precio final ec esc"]:
+        if c not in _df.columns:
+            _df[c] = np.nan
 
-_df["Monto_num"]        = _df["Monto"].apply(_to_num_strict)
-_df["Precio_final_num"] = _df["Precio final ec esc"].apply(_to_num_strict)
+    _df["Monto_num"] = _df["Monto"].apply(_to_num_strict)
+    _df["Precio_final_num"] = _df["Precio final ec esc"].apply(_to_num_strict)
 
-base_cat = (
-    _df.groupby(_cat, as_index=False)
-       .agg(Monto=("Monto_num","sum"),
-            PrecioEsc=("Precio_final_num","sum"))
-)
+    base_cat = (
+        _df.groupby(_cat, as_index=False)
+           .agg(Monto=("Monto_num", "sum"),
+                PrecioEsc=("Precio_final_num", "sum"))
+    )
+    orden = ["Suministro", "I+D", "Montaje"]
+    base_cat["__ord"] = base_cat[_cat].apply(lambda x: orden.index(x) if x in orden else 999)
+    base_cat = base_cat.sort_values(["__ord", "Monto"], ascending=[True, False]).drop(columns="__ord")
+    base_cat["%_esc"] = np.where(
+        base_cat["Monto"] > 0,
+        (base_cat["PrecioEsc"] / base_cat["Monto"] * 100).round(2),
+        np.nan
+    )
 
-# --- Orden sugerido y %_esc
-orden = ["Suministro", "I+D", "Montaje"]
-base_cat["__ord"] = base_cat[_cat].apply(lambda x: orden.index(x) if x in orden else 999)
-base_cat = base_cat.sort_values(["__ord","Monto"], ascending=[True, False]).drop(columns="__ord")
-base_cat["%_esc"] = np.where(base_cat["Monto"]>0, (base_cat["PrecioEsc"]/base_cat["Monto"]*100).round(2), np.nan)
+    cats = base_cat[_cat].tolist()
+    monto = base_cat["Monto"].tolist()
+    esc = base_cat["PrecioEsc"].tolist()
+    pct = base_cat["%_esc"].tolist()
 
-cats = base_cat[_cat].tolist()
-monto = base_cat["Monto"].tolist()
-esc   = base_cat["PrecioEsc"].tolist()
-pct   = base_cat["%_esc"].tolist()
+    def _abbr(x: float) -> str:
+        if x is None or (isinstance(x, float) and (np.isnan(x) or np.isinf(x))):
+            return ""
+        if abs(x) >= 1_000_000_000:
+            return f"${x/1_000_000_000:,.2f}B"
+        if abs(x) >= 1_000_000:
+            return f"${x/1_000_000:,.2f}M"
+        if abs(x) >= 1_000:
+            return f"${x/1_000:,.0f}K"
+        return f"${x:,.0f}"
 
-# --- Helper para etiquetas compactas (K/M)
-def _abbr(x: float) -> str:
-    if x is None or (isinstance(x, float) and (np.isnan(x) or np.isinf(x))):
-        return ""
-    if abs(x) >= 1_000_000_000:
-        return f"${x/1_000_000_000:,.2f}B"
-    if abs(x) >= 1_000_000:
-        return f"${x/1_000_000:,.2f}M"
-    if abs(x) >= 1_000:
-        return f"${x/1_000:,.0f}K"
-    return f"${x:,.0f}"
+    def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+        hex_color = hex_color.lstrip("#")
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
 
-# --- Colores por CATEGORÍA (Suministro / I+D / Montaje) usando PALETTE_SM
-def _hex_to_rgba(hex_color: str, alpha: float) -> str:
-    hex_color = hex_color.lstrip("#")
-    r = int(hex_color[0:2], 16); g = int(hex_color[2:4], 16); b = int(hex_color[4:6], 16)
-    return f"rgba({r},{g},{b},{alpha})"
+    colors_init = [_hex_to_rgba(PALETTE_SM.get(cat, PRIMARY), 0.95) for cat in cats]
+    colors_esc = [_hex_to_rgba(PALETTE_SM.get(cat, PRIMARY), 0.60) for cat in cats]
+    total_init = float(np.nansum(monto) or 0.0)
+    labels_init = [
+        (f"{_abbr(x)} • {x/total_init*100:.2f}%" if total_init > 0 else _abbr(x))
+        for x in monto
+    ]
+    labels_esc = [
+        (f"{_abbr(x)} • {p:.2f}%_esc" if pd.notna(p) else _abbr(x))
+        for x, p in zip(esc, pct)
+    ]
 
-# mismo color por categoría: sólido para Monto inicial, más claro para Precio escalado
-colors_init = [_hex_to_rgba(PALETTE_SM.get(cat, PRIMARY), 0.95) for cat in cats]
-colors_esc  = [_hex_to_rgba(PALETTE_SM.get(cat, PRIMARY), 0.60) for cat in cats]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=cats, x=monto, name="Monto inicial (CLP)", orientation="h",
+        marker=dict(color=colors_init, line=dict(color="rgba(15,23,42,.20)", width=0.6)),
+        text=labels_init, textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Monto inicial: $%{x:,.0f}<extra></extra>"
+    ))
+    fig.add_trace(go.Bar(
+        y=cats, x=esc, name="Precio escalado (CLP)", orientation="h",
+        marker=dict(color=colors_esc, line=dict(color="rgba(15,23,42,.20)", width=0.6)),
+        text=labels_esc, textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Precio escalado: $%{x:,.0f}<extra></extra>"
+    ))
 
-# Etiquetas más informativas
-total_init = float(np.nansum(monto) or 0.0)
-labels_init = [
-    (f"{_abbr(x)} • {x/total_init*100:.2f}%" if total_init > 0 else _abbr(x))
-    for x in monto
-]
-labels_esc  = [
-    (f"{_abbr(x)} • {p:.2f}%_esc" if pd.notna(p) else _abbr(x))
-    for x, p in zip(esc, pct)
-]
+    max_x = max([v for v in (monto + esc) if pd.notna(v)] + [0])
+    fig.update_xaxes(
+        range=[0, max_x * 1.28],
+        separatethousands=True, tickprefix="$",
+        showgrid=True, gridcolor=GRID, zeroline=False
+    )
+    fig.update_layout(
+        barmode="group", bargap=0.32, bargroupgap=0.24,
+        margin=dict(l=120, r=32, t=56, b=48),
+        plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
+        title=dict(text="Totales por categoría (según filtros activos)", font=dict(size=18, color="#0f172a")),
+        legend=dict(
+            title="Serie",
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+            bgcolor="rgba(255,255,255,.75)", bordercolor="rgba(148,163,184,.35)", borderwidth=1
+        ),
+        uniformtext_minsize=11, uniformtext_mode="hide",
+        font=dict(family="Inter, Segoe UI, system-ui, sans-serif", size=13, color="#0f172a"),
+        hoverlabel=dict(bgcolor="white", bordercolor="rgba(148,163,184,.6)", font=dict(size=12))
+    )
+    fig.update_yaxes(title="Categoría", showgrid=False)
 
-# --- Figura con barras separadas (sin solaparse)
-fig = go.Figure()
-
-fig.add_trace(go.Bar(
-    y=cats, x=monto, name="Monto inicial (CLP)", orientation="h",
-    marker=dict(color=colors_init, line=dict(color="rgba(15,23,42,.20)", width=0.6)),
-    text=labels_init, textposition="outside",
-    hovertemplate="<b>%{y}</b><br>Monto inicial: $%{x:,.0f}<extra></extra>"
-))
-fig.add_trace(go.Bar(
-    y=cats, x=esc, name="Precio escalado (CLP)", orientation="h",
-    marker=dict(color=colors_esc, line=dict(color="rgba(15,23,42,.20)", width=0.6)),
-    text=labels_esc, textposition="outside",
-    hovertemplate="<b>%{y}</b><br>Precio escalado: $%{x:,.0f}<extra></extra>"
-))
-
-# Espacio a la derecha para textos
-max_x = max([v for v in (monto + esc) if pd.notna(v)] + [0])
-fig.update_xaxes(
-    range=[0, max_x * 1.28],
-    separatethousands=True, tickprefix="$",
-    showgrid=True, gridcolor=GRID, zeroline=False
-)
-
-# Estética PRO
-fig.update_layout(
-    barmode="group", bargap=0.32, bargroupgap=0.24,
-    margin=dict(l=120, r=32, t=56, b=48),
-    plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)",
-    title=dict(
-        text="Totales por categoría (según filtros activos)",
-        font=dict(size=18, color="#0f172a")
-    ),
-    legend=dict(
-        title="Serie",
-        orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-        bgcolor="rgba(255,255,255,.75)", bordercolor="rgba(148,163,184,.35)", borderwidth=1
-    ),
-    uniformtext_minsize=11, uniformtext_mode="hide",
-    font=dict(family="Inter, Segoe UI, system-ui, sans-serif", size=13, color="#0f172a"),
-    hoverlabel=dict(bgcolor="white", bordercolor="rgba(148,163,184,.6)", font=dict(size=12))
-)
-fig.update_yaxes(title="Categoría", showgrid=False)
-
-
-
-st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 # ===============================
 # NUEVO — Tabla SOLO "Factor Necesario"
 # (idéntica a la tabla principal, pero filtrada)
 # ===============================
 
-st.markdown("""
+with tab_items:
+    st.markdown("""
 <style>
   .fxi-card2{border-radius:18px;padding:14px 16px;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 62%);
              border:1px solid rgba(148,163,184,.35);box-shadow:0 6px 14px rgba(15,23,42,.06);margin-top:14px}
@@ -1422,9 +1681,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div class='fxi-card2'>"
-            "<h3 style='margin:0 0 10px'>🧮 Factores Necesarios para el Piloto 10 kW ",
-            unsafe_allow_html=True)
+    st.markdown("<div class='fxi-card2'>"
+                "<h3 style='margin:0 0 10px'>🧮 Factores Necesarios para el Piloto 10 kW ",
+                unsafe_allow_html=True)
 
 # --- Base desde df_cost (respeta filtros activos de S/M que aplicaste arriba)
 _fx = df_cost.copy()
@@ -1433,97 +1692,91 @@ _fx = df_cost.copy()
 _fx["Factor de costo"] = _fx["Factor de costo"].fillna("").astype(str).str.strip()
 _fx = _fx[_fx["Factor de costo"].str.lower().str.contains("necesario")]
 
-if _fx.empty:
-    st.info("No hay registros clasificados como **Factor Necesario** para los filtros actuales.")
-else:
-    # Asegurar columnas necesarias
-    for c in ["Monto","Precio final ec esc","item","Justificación % e E.E"]:
-        if c not in _fx.columns:
-            _fx[c] = np.nan
+with tab_items:
+    if _fx.empty:
+        st.info("No hay registros clasificados como **Factor Necesario** para los filtros actuales.")
+    else:
+        for c in ["Monto", "Precio final ec esc", "item", "Justificación % e E.E"]:
+            if c not in _fx.columns:
+                _fx[c] = np.nan
 
-    # Numéricos
-    _fx["Monto_num"]        = _fx["Monto"].apply(_to_num_strict)
-    _fx["Precio_final_num"] = _fx["Precio final ec esc"].apply(_to_num_strict)
-    _fx["item"]             = _fx["item"].fillna("(Vacío)").astype(str)
+        _fx["Monto_num"] = _fx["Monto"].apply(_to_num_strict)
+        _fx["Precio_final_num"] = _fx["Precio final ec esc"].apply(_to_num_strict)
+        _fx["item"] = _fx["item"].fillna("(Vacío)").astype(str)
 
-    # Aggregación
-    aggN = (_fx.groupby(["Factor de costo","item"], as_index=False)
-              .agg(
-                  n_items=("Monto_num","count"),
-                  monto_total=("Monto_num","sum"),
-                  precio_final_total=("Precio_final_num","sum")
-              ))
-    aggN["%_esc"] = np.where(
-        aggN["monto_total"]>0,
-        (aggN["precio_final_total"]/aggN["monto_total"]*100).round(2),
-        np.nan
-    )
+        aggN = (_fx.groupby(["Factor de costo", "item"], as_index=False)
+                  .agg(
+                      n_items=("Monto_num", "count"),
+                      monto_total=("Monto_num", "sum"),
+                      precio_final_total=("Precio_final_num", "sum")
+                  ))
+        aggN["%_esc"] = np.where(
+            aggN["monto_total"] > 0,
+            (aggN["precio_final_total"] / aggN["monto_total"] * 100).round(2),
+            np.nan
+        )
 
-    # Unir justificaciones (compuesto, sin duplicados)
-    def _join_justifs2(s: pd.Series, max_len: int = 200) -> str:
-        vals = [str(x).strip() for x in s.dropna().astype(str) if str(x).strip()]
-        if not vals: return ""
-        txt = " · ".join(pd.unique(vals))
-        return (txt[:max_len] + "…") if len(txt) > max_len else txt
+        def _join_justifs2(s: pd.Series, max_len: int = 200) -> str:
+            vals = [str(x).strip() for x in s.dropna().astype(str) if str(x).strip()]
+            if not vals:
+                return ""
+            txt = " · ".join(pd.unique(vals))
+            return (txt[:max_len] + "…") if len(txt) > max_len else txt
 
-    justN = (_fx.groupby(["Factor de costo","item"], dropna=False)["Justificación % e E.E"]
-               .apply(_join_justifs2)
-               .reset_index(name="Justificación % e E.E"))
+        justN = (_fx.groupby(["Factor de costo", "item"], dropna=False)["Justificación % e E.E"]
+                   .apply(_join_justifs2)
+                   .reset_index(name="Justificación % e E.E"))
 
-    # Tabla de display (mismos nombres/orden que la original)
-    dfN = (aggN.merge(justN, on=["Factor de costo","item"], how="left")
-               .rename(columns={
-                   "Factor de costo": "Factor",
-                   "item": "Item",
-                   "n_items": "Ítems",
-                   "monto_total": "Monto total (CLP)",
-                   "precio_final_total": "Precio final ec esc (CLP)",
-                   "%_esc": "% del monto al escalado"
-               }))
+        dfN = (aggN.merge(justN, on=["Factor de costo", "item"], how="left")
+                   .rename(columns={
+                       "Factor de costo": "Factor",
+                       "item": "Item",
+                       "n_items": "Ítems",
+                       "monto_total": "Monto total (CLP)",
+                       "precio_final_total": "Precio final ec esc (CLP)",
+                       "%_esc": "% del monto al escalado"
+                   }))
 
-    # Formato chileno para montos (como texto)
-    def _fmt_chileno_local(x):
-        try:
-            return "$ {:,}".format(int(round(float(x)))).replace(",", ".")
-        except Exception:
-            return x
-    dfN["Monto total (CLP)"]        = dfN["Monto total (CLP)"].apply(_fmt_chileno_local)
-    dfN["Precio final ec esc (CLP)"] = dfN["Precio final ec esc (CLP)"].apply(_fmt_chileno_local)
+        def _fmt_chileno_local(x):
+            try:
+                return "$ {:,}".format(int(round(float(x)))).replace(",", ".")
+            except Exception:
+                return x
 
-    # Mostrar
-    st.dataframe(
-        dfN,
-        use_container_width=True,
-        height=420,
-        hide_index=True,
-        column_config={
-            "Factor": st.column_config.TextColumn("Factor", width="medium"),
-            "Item": st.column_config.TextColumn("Item", width="medium"),
-            "Ítems": st.column_config.NumberColumn("Ítems", width="small", format="%d"),
-            "Monto total (CLP)": st.column_config.TextColumn("Monto total (CLP)", width="small"),
-            "Precio final ec esc (CLP)": st.column_config.TextColumn("Precio final ec esc (CLP)", width="small"),
-            "% del monto al escalado": st.column_config.ProgressColumn(
-                "% del monto al escalado",
-                help="Relación Precio Final / Monto Original",
-                min_value=0, max_value=100, format="%.2f%%"
-            ),
-            "Justificación % e E.E": st.column_config.TextColumn(
-                "Justificación % e E.E", width="large",
-                help="Motivos/explicaciones por Factor × Item"
-            ),
-        }
-    )
+        dfN["Monto total (CLP)"] = dfN["Monto total (CLP)"].apply(_fmt_chileno_local)
+        dfN["Precio final ec esc (CLP)"] = dfN["Precio final ec esc (CLP)"].apply(_fmt_chileno_local)
 
-    # Chips de resumen (como en la tabla original)
-    total_pf_N = float(aggN["precio_final_total"].sum() or 0)
-    prom_pct_N = float(aggN["%_esc"].dropna().mean() or 0)
-    st.markdown(
-        f"<div style='display:flex;gap:8px;margin-top:10px'>"
-        f"<span class='chip chip--ok'>Precio final total: {_money_fmt(total_pf_N)}</span>"
-        f"<span class='chip'>Promedio %_esc: {prom_pct_N:.2f}%</span>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
+        st.dataframe(
+            dfN,
+            use_container_width=True,
+            height=420,
+            hide_index=True,
+            column_config={
+                "Factor": st.column_config.TextColumn("Factor", width="medium"),
+                "Item": st.column_config.TextColumn("Item", width="medium"),
+                "Ítems": st.column_config.NumberColumn("Ítems", width="small", format="%d"),
+                "Monto total (CLP)": st.column_config.TextColumn("Monto total (CLP)", width="small"),
+                "Precio final ec esc (CLP)": st.column_config.TextColumn("Precio final ec esc (CLP)", width="small"),
+                "% del monto al escalado": st.column_config.ProgressColumn(
+                    "% del monto al escalado",
+                    help="Relación Precio Final / Monto Original",
+                    min_value=0, max_value=100, format="%.2f%%"
+                ),
+                "Justificación % e E.E": st.column_config.TextColumn(
+                    "Justificación % e E.E", width="large",
+                    help="Motivos/explicaciones por Factor × Item"
+                ),
+            }
+        )
 
+        total_pf_N = float(aggN["precio_final_total"].sum() or 0)
+        prom_pct_N = float(aggN["%_esc"].dropna().mean() or 0)
+        st.markdown(
+            f"<div style='display:flex;gap:8px;margin-top:10px'>"
+            f"<span class='chip chip--ok'>Precio final total: {_money_fmt(total_pf_N)}</span>"
+            f"<span class='chip'>Promedio %_esc: {prom_pct_N:.2f}%</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
 
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)

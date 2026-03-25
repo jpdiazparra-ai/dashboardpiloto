@@ -801,10 +801,14 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
         capacidades_externo = 0.0
         know_how_fw = 0.0
 
+    fin_nav_key = "inputs_financiero_asset_sel"
+    if fin_nav_key not in st.session_state:
+        st.session_state[fin_nav_key] = "costo_ejecutado"
+
     st.markdown(
         """
         <style>
-        .inputs-fin-summary{display:grid;grid-template-columns:1.45fr .85fr .85fr;gap:16px;margin:10px 0 18px}
+        .inputs-fin-summary{display:grid;grid-template-columns:1.45fr .85fr .85fr;gap:16px;margin:10px 0 10px}
         @media (max-width:1400px){.inputs-fin-summary{grid-template-columns:1fr;}}
         .inputs-fin-hero,
         .inputs-fin-side{
@@ -813,6 +817,11 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
             background:linear-gradient(180deg,#f8fafc 0%,#ffffff 68%);
             border:1px solid rgba(148,163,184,.30);
             box-shadow:0 8px 18px rgba(15,23,42,.06);
+        }
+        .inputs-fin-hero.active,
+        .inputs-fin-side.active{
+            border:1px solid rgba(56,189,248,.45);
+            box-shadow:0 16px 30px rgba(15,23,42,.09);
         }
         .inputs-fin-hero{
             background:linear-gradient(90deg,#EFF8FF 0%,#DFF4FF 42%,#C6ECFF 100%);
@@ -831,41 +840,119 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
             border:1px solid rgba(165,180,252,.45);background:#eef2ff;color:#3730a3
         }
         .inputs-fin-note{font-size:13px;line-height:1.5;color:#475569;margin-top:6px}
+        .inputs-fin-detail{
+            border-radius:22px;
+            padding:18px 18px 16px 18px;
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            border:1px solid rgba(148,163,184,.22);
+            box-shadow:0 10px 24px rgba(15,23,42,.05);
+            margin-bottom:18px;
+        }
+        .inputs-fin-detail-k{
+            font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:8px;
+        }
+        .inputs-fin-detail-h{
+            font-size:22px;font-weight:900;color:#0f172a;line-height:1.15;margin-bottom:8px;
+        }
+        .inputs-fin-detail-s{
+            font-size:14px;line-height:1.55;color:#475569;margin-bottom:14px;max-width:980px;
+        }
+        .inputs-fin-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+        @media (max-width:1100px){.inputs-fin-detail-grid{grid-template-columns:1fr;}}
+        .inputs-fin-detail-box{
+            border-radius:16px;padding:14px 14px 12px;background:#fff;border:1px solid rgba(148,163,184,.18);
+        }
+        .inputs-fin-detail-box-k{
+            font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#64748b;margin-bottom:8px;
+        }
+        .inputs-fin-detail-box-v{
+            font-size:15px;font-weight:800;color:#0f172a;line-height:1.4;
+        }
+        .inputs-fin-selector-head{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748b;
+            margin:12px 0 10px 0;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    cards = f"""
-    <div class="inputs-fin-summary">
-      <div class="inputs-fin-hero">
-        <div class="inputs-fin-row"><div class="inputs-fin-ico">💰</div><div class="inputs-fin-h">Costo Ejecutado</div></div>
-        <div class="inputs-fin-v">{html.escape(format_clp(monto_total))}</div>
-        <div class="inputs-fin-sub">
-          <span class="inputs-fin-chip">Base: {n_items:,} ítems</span>
-          <span class="inputs-fin-chip">Proveedores: {n_prov:,}</span>
-        </div>
-        <div class="inputs-fin-note">Inversión efectivamente ejecutada para construir y poner en forma operativa el activo tecnológico.</div>
-      </div>
-      <div class="inputs-fin-side">
-        <div class="inputs-fin-row"><div class="inputs-fin-ico">🧠</div><div class="inputs-fin-h">Capacidades externo</div></div>
-        <div class="inputs-fin-v">{html.escape(format_clp(capacidades_externo))}</div>
-        <div class="inputs-fin-sub"><span class="inputs-fin-chip">Valorización FW · G6</span></div>
-        <div class="inputs-fin-note">Capacidades complementarias valorizadas fuera del gasto ejecutado directo.</div>
-      </div>
-      <div class="inputs-fin-side">
-        <div class="inputs-fin-row"><div class="inputs-fin-ico">⚙️</div><div class="inputs-fin-h">Know-how FW</div></div>
-        <div class="inputs-fin-v">{html.escape(format_clp(know_how_fw))}</div>
-        <div class="inputs-fin-sub"><span class="inputs-fin-chip">Valorización FW · G7</span></div>
-        <div class="inputs-fin-note">Valor del conocimiento técnico incorporado en la arquitectura y desarrollo del activo.</div>
-      </div>
-    </div>
-    """
-    st.markdown(cards, unsafe_allow_html=True)
+    cards = [
+        {
+            "key": "costo_ejecutado",
+            "title": "Costo Ejecutado",
+            "icon": "💰",
+            "value": format_clp(monto_total),
+            "chips": [f"Base: {n_items:,} ítems", f"Proveedores: {n_prov:,}"],
+            "note": "Inversión efectivamente ejecutada para construir y poner en forma operativa el activo tecnológico.",
+            "card_class": "inputs-fin-hero",
+        },
+        {
+            "key": "capacidades_externas",
+            "title": "Capacidades externo",
+            "icon": "🧠",
+            "value": format_clp(capacidades_externo),
+            "chips": ["Valorización FW · G6"],
+            "note": "Capacidades complementarias valorizadas fuera del gasto ejecutado directo.",
+            "card_class": "inputs-fin-side",
+        },
+        {
+            "key": "know_how_fw",
+            "title": "Know-how FW",
+            "icon": "⚙️",
+            "value": format_clp(know_how_fw),
+            "chips": ["Valorización FW · G7"],
+            "note": "Valor del conocimiento técnico incorporado en la arquitectura y desarrollo del activo.",
+            "card_class": "inputs-fin-side",
+        },
+    ]
+
+    cols = st.columns(3)
+    for idx, card in enumerate(cards):
+        is_active = st.session_state.get(fin_nav_key) == card["key"]
+        chips_html = "".join(f'<span class="inputs-fin-chip">{html.escape(chip)}</span>' for chip in card["chips"])
+        with cols[idx]:
+            st.markdown(
+                f"""
+                <div class="{card['card_class']} {'active' if is_active else ''}">
+                  <div class="inputs-fin-row"><div class="inputs-fin-ico">{card['icon']}</div><div class="inputs-fin-h">{html.escape(card['title'])}</div></div>
+                  <div class="inputs-fin-v">{html.escape(card['value'])}</div>
+                  <div class="inputs-fin-sub">{chips_html}</div>
+                  <div class="inputs-fin-note">{html.escape(card['note'])}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.button(
+                "Seleccionado" if is_active else "Abrir sub-bloque",
+                key=f"inputs_fin_asset_nav_{idx}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+                on_click=lambda value=card["key"]: st.session_state.__setitem__(fin_nav_key, value),
+            )
+
+    selector_cols = st.columns(3)
+    for idx, card in enumerate(cards):
+        is_active = st.session_state.get(fin_nav_key) == card["key"]
+        with selector_cols[idx]:
+            st.button(
+                "Seleccionado" if is_active else "Abrir bloque",
+                key=f"inputs_fin_asset_selector_{idx}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+                on_click=lambda value=card["key"]: st.session_state.__setitem__(fin_nav_key, value),
+            )
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
     return {
         "monto_total": monto_total,
         "capacidades_externo": capacidades_externo,
         "know_how_fw": know_how_fw,
+        "selected": st.session_state.get(fin_nav_key, "costo_ejecutado"),
     }
 
 
@@ -1398,7 +1485,7 @@ def build_inputs_gantt_figure(df: pd.DataFrame, date_mode: str = "Real", color_b
                 dict(step="all", label="All"),
             ])
         ),
-        rangeslider=dict(visible=True),
+        rangeslider=dict(visible=False),
         showgrid=True,
         gridcolor="rgba(60,60,67,0.08)",
     )
@@ -1445,10 +1532,11 @@ def render_inputs_project_gantt():
         fase_default = "Instalación Turbina" if "Instalación Turbina" in fases else "Todas"
         if "inputs_gantt_fase" not in st.session_state:
             st.session_state["inputs_gantt_fase"] = fase_default
+        elif st.session_state["inputs_gantt_fase"] not in fase_options:
+            st.session_state["inputs_gantt_fase"] = fase_default
         fase_sel = st.selectbox(
             "Fase",
             fase_options,
-            index=fase_options.index(st.session_state.get("inputs_gantt_fase", fase_default)),
             key="inputs_gantt_fase",
         )
     with c2:
@@ -1571,12 +1659,224 @@ def render_inputs_contexto_block():
             line-height:1.5;
             color:#334155;
         }
+        .context-milestone-wrap{
+            border-radius:22px;
+            padding:18px 18px 12px 18px;
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            border:1px solid rgba(148,163,184,.20);
+            box-shadow:0 10px 24px rgba(15,23,42,.05);
+            margin-bottom:18px;
+        }
+        .context-detail{
+            border-radius:22px;
+            padding:18px 18px 16px 18px;
+            background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);
+            border:1px solid rgba(148,163,184,.22);
+            box-shadow:0 10px 24px rgba(15,23,42,.05);
+            margin-bottom:18px;
+        }
+        .context-detail-k{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748b;
+            margin-bottom:8px;
+        }
+        .context-detail-h{
+            font-size:22px;
+            font-weight:900;
+            color:#0f172a;
+            line-height:1.2;
+            margin-bottom:10px;
+        }
+        .context-detail-s{
+            font-size:14px;
+            color:#475569;
+            line-height:1.55;
+            margin-bottom:14px;
+        }
+        .context-detail-box{
+            border-radius:16px;
+            padding:14px 14px 12px 14px;
+            background:#ffffff;
+            border:1px solid rgba(148,163,184,.18);
+            height:100%;
+        }
+        .context-detail-box-h{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.1em;
+            text-transform:uppercase;
+            color:#64748b;
+            margin-bottom:8px;
+        }
+        .context-detail-box-v{
+            font-size:15px;
+            font-weight:800;
+            color:#0f172a;
+            line-height:1.4;
+        }
+        .context-detail-list{
+            display:flex;
+            gap:10px;
+            align-items:flex-start;
+            margin-bottom:10px;
+        }
+        .context-detail-list-dot{
+            width:8px;
+            height:8px;
+            margin-top:8px;
+            border-radius:999px;
+            background:#0F766E;
+            flex:0 0 auto;
+        }
+        .context-detail-list-t{
+            font-size:14px;
+            line-height:1.55;
+            color:#334155;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("### Validación integrada de aerodinámica, sistema eléctrico, estructura y manufactura para habilitar el escalamiento a 80 kW")
+    st.markdown("### Validación Integrada del Sistema")
+    if len(contexto_sections) >= 2:
+        stage_map = {}
+        objective_map = {}
+        stage_color_map = {
+            "Diseño y Optimización del Sistema": "#0F766E",
+            "Ingeniería Aplicada y Manufactura": "#1D4ED8",
+            "Integración y Validación del Activo": "#C2410C",
+            "Narrativa estratégica": "#64748B",
+        }
+        for idx, section in enumerate(contexto_sections):
+            if idx in (0, 1, 2):
+                stage_map[section["title"]] = "Diseño y Optimización del Sistema"
+                objective_map[section["title"]] = "Reducir riesgo de diseno, performance y arquitectura base del sistema."
+            elif idx in (3, 4, 5):
+                stage_map[section["title"]] = "Ingeniería Aplicada y Manufactura"
+                objective_map[section["title"]] = "Convertir la definicion tecnica en componentes manufacturables e integrables."
+            elif idx in (6, 7):
+                stage_map[section["title"]] = "Integración y Validación del Activo"
+                objective_map[section["title"]] = "Cerrar integracion, pruebas y evidencia de funcionamiento del activo."
+            else:
+                stage_map[section["title"]] = "Narrativa estratégica"
+                objective_map[section["title"]] = "Sintetizar la lectura ejecutiva del avance tecnico."
+
+        df_hitos = pd.DataFrame(
+            [
+                {
+                    "Orden": idx + 1,
+                    "Hito": section["title"],
+                    "Etapa": stage_map[section["title"]],
+                    "Y": 1 if idx % 2 == 0 else 0,
+                }
+                for idx, section in enumerate(contexto_sections)
+            ]
+        )
+        df_hitos["Color"] = df_hitos["Etapa"].map(stage_color_map).fillna("#64748B")
+        df_hitos["Etiqueta"] = df_hitos.apply(lambda row: f"H{int(row['Orden'])}. {row['Hito']}", axis=1)
+        text_positions = ["top center" if y == 1 else "bottom center" for y in df_hitos["Y"]]
+
+        fig_hitos = go.Figure()
+        fig_hitos.add_trace(
+            go.Scatter(
+                x=df_hitos["Orden"],
+                y=[0.5] * len(df_hitos),
+                mode="lines",
+                line=dict(color="rgba(148,163,184,.55)", width=4),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        fig_hitos.add_trace(
+            go.Scatter(
+                x=df_hitos["Orden"],
+                y=df_hitos["Y"],
+                mode="markers+text",
+                text=df_hitos["Etiqueta"],
+                textposition=text_positions,
+                marker=dict(size=22, color=df_hitos["Color"], line=dict(color="#FFFFFF", width=3)),
+                customdata=np.stack([df_hitos["Etapa"]], axis=-1),
+                hovertemplate="<b>%{text}</b><br>Etapa: %{customdata[0]}<extra></extra>",
+                showlegend=False,
+            )
+        )
+        fig_hitos.update_layout(
+            title="Ruta de hitos del activo tecnológico",
+            height=360,
+            margin=dict(l=20, r=20, t=60, b=30),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(
+                title="Secuencia de hitos",
+                tickmode="array",
+                tickvals=df_hitos["Orden"].tolist(),
+                ticktext=[f"H{v}" for v in df_hitos["Orden"].tolist()],
+                showgrid=False,
+                zeroline=False,
+            ),
+            yaxis=dict(showticklabels=False, showgrid=False, zeroline=False, range=[-0.25, 1.25]),
+        )
+        st.markdown('<div class="context-milestone-wrap">', unsafe_allow_html=True)
+        st.plotly_chart(fig_hitos, use_container_width=True, key="inputs_context_hitos_chart")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        hitos_options = [f"H{idx + 1}. {section['title']}" for idx, section in enumerate(contexto_sections)]
+        selector_key = "inputs_context_hito_sel"
+        if selector_key not in st.session_state:
+            st.session_state[selector_key] = hitos_options[0]
+        selected_hito_label = st.selectbox(
+            "Seleccionar hito técnico",
+            hitos_options,
+            key=selector_key,
+        )
+        selected_idx = hitos_options.index(selected_hito_label)
+        selected_section = contexto_sections[selected_idx]
+        selected_stage = stage_map[selected_section["title"]]
+        selected_objective = objective_map[selected_section["title"]]
+        selected_color = stage_color_map.get(selected_stage, "#64748B")
+        detail_bullets_html = "".join(
+            f'<div class="context-detail-list"><span class="context-detail-list-dot" style="background:{selected_color};"></span><div class="context-detail-list-t">{bullet}</div></div>'
+            for bullet in selected_section["bullets"]
+        )
+
+        detail_cols = st.columns([1.2, 0.8, 0.8])
+        with detail_cols[0]:
+            st.markdown(
+                f"""
+                <div class="context-detail">
+                  <div class="context-detail-k">{selected_hito_label} · {selected_stage}</div>
+                  <div class="context-detail-h">{selected_section["title"]}</div>
+                  <div class="context-detail-s">{selected_objective}</div>
+                  {detail_bullets_html}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with detail_cols[1]:
+            st.markdown(
+                f"""
+                <div class="context-detail-box">
+                  <div class="context-detail-box-h">Etapa de ingeniería</div>
+                  <div class="context-detail-box-v">{selected_stage}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with detail_cols[2]:
+            st.markdown(
+                f"""
+                <div class="context-detail-box">
+                  <div class="context-detail-box-h">Paquete técnico</div>
+                  <div class="context-detail-box-v">{len(selected_section["bullets"])} frentes de trabajo documentados</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
     rows = [contexto_sections[i:i + 2] for i in range(0, len(contexto_sections), 2)]
     for row_sections in rows:
         cols = st.columns(len(row_sections))
@@ -1788,17 +2088,6 @@ def render_inputs_estado_actual_dashboard():
         return
 
     valor_activo_tecnologico, monto_total, capacidades_externo, know_how_fw = get_valor_activo_tecnologico_construido()
-    evidencia_ratio = (monto_total / valor_activo_tecnologico) if valor_activo_tecnologico > 0 else 0.0
-    componente_intangible = capacidades_externo + know_how_fw
-
-    memo_cols = st.columns(3)
-    with memo_cols[0]:
-        kpi_card("Costo ejecutado", format_clp(monto_total), "Base verificable invertida en el piloto 10 kW.", variant="sky")
-    with memo_cols[1]:
-        kpi_card("Componente referencial", format_clp(componente_intangible), "Capacidades externas y know-how agregados a la lectura del activo.")
-    with memo_cols[2]:
-        kpi_card("% evidencia dura", f"{evidencia_ratio:.1%}", "Peso del costo ejecutado dentro del valor total del activo.", variant="green")
-
     st.markdown(
         """
         <style>
@@ -1904,8 +2193,8 @@ def render_inputs_estado_actual_dashboard():
         <div class="asset-hero">
           <div class="asset-hero-grid">
             <div>
-              <div class="asset-hero-k">Activo tecnológico valorizado</div>
-              <div class="asset-hero-t">Valor del Activo Tecnológico Construido</div>
+              <div class="asset-hero-k">Activo tecnológico</div>
+              <div class="asset-hero-t">Costo ejecutado en Activo Tecnológico Construido</div>
               <div class="asset-hero-v">{format_clp(valor_activo_tecnologico)}</div>
               <div class="asset-hero-p">
                 Lectura patrimonial referencial del piloto 10 kW, separando costo ejecutado,
@@ -1915,15 +2204,15 @@ def render_inputs_estado_actual_dashboard():
             <div class="asset-hero-panel">
               <div class="asset-hero-panel-h">Descomposición referencial del activo</div>
               <div class="asset-hero-row">
-                <div class="asset-hero-label">Costo ejecutado verificable</div>
+                <div class="asset-hero-label">Costo ejecutado</div>
                 <div class="asset-hero-value">{format_clp(monto_total)}</div>
               </div>
               <div class="asset-hero-row">
-                <div class="asset-hero-label">Capacidades externas valorizadas</div>
+                <div class="asset-hero-label">Capacidades externas</div>
                 <div class="asset-hero-value">{format_clp(capacidades_externo)}</div>
               </div>
               <div class="asset-hero-row">
-                <div class="asset-hero-label">Know-how FW referencial</div>
+                <div class="asset-hero-label">Know-how FW</div>
                 <div class="asset-hero-value">{format_clp(know_how_fw)}</div>
               </div>
               <div class="asset-hero-total">
@@ -1938,19 +2227,77 @@ def render_inputs_estado_actual_dashboard():
     )
 
     st.markdown("### Estado Técnico-Financiero Consolidado – Piloto 10 kW")
-    render_inputs_financial_main_kpis(base)
+    financial_kpis = render_inputs_financial_main_kpis(base)
+    selected_financial_asset = financial_kpis.get("selected", "costo_ejecutado")
 
-    st.markdown("### 📂 Distribución de Inversión por Categoría Técnica – Piloto 10 kW")
-    fig_sm, tabla_sm = make_inputs_suministro_chart(base)
-    if fig_sm is not None and tabla_sm is not None and not tabla_sm.empty:
-        render_inputs_sm_kpi_cards(tabla_sm)
-        st.plotly_chart(fig_sm, use_container_width=True)
+    if selected_financial_asset == "costo_ejecutado":
+        st.markdown("### 📂 Distribución de Inversión por Categoría Técnica – Piloto 10 kW")
+        fig_sm, tabla_sm = make_inputs_suministro_chart(base)
+        if fig_sm is not None and tabla_sm is not None and not tabla_sm.empty:
+            render_inputs_sm_kpi_cards(tabla_sm)
+            st.plotly_chart(fig_sm, use_container_width=True)
+        else:
+            st.info("No hay datos válidos para graficar Suministro / Montaje.")
+
+        render_inputs_project_gantt()
+        render_inputs_item_analytics(base)
+        render_inputs_factor_chart(base)
+    elif selected_financial_asset == "capacidades_externas":
+        st.markdown(
+            f"""
+            <div class="inputs-fin-detail">
+              <div class="inputs-fin-detail-k">Sub-bloque activo</div>
+              <div class="inputs-fin-detail-h">Capacidades externas valorizadas</div>
+              <div class="inputs-fin-detail-s">
+                Este componente representa capacidades complementarias reconocidas fuera del gasto ejecutado directo,
+                incorporadas como base patrimonial para la lectura del activo tecnológico construido.
+              </div>
+              <div class="inputs-fin-detail-grid">
+                <div class="inputs-fin-detail-box">
+                  <div class="inputs-fin-detail-box-k">Valor referencial</div>
+                  <div class="inputs-fin-detail-box-v">{format_clp(capacidades_externo)}</div>
+                </div>
+                <div class="inputs-fin-detail-box">
+                  <div class="inputs-fin-detail-box-k">Fuente</div>
+                  <div class="inputs-fin-detail-box-v">Valorización FW · G6</div>
+                </div>
+                <div class="inputs-fin-detail-box">
+                  <div class="inputs-fin-detail-box-k">Rol en el activo</div>
+                  <div class="inputs-fin-detail-box-v">Aumenta la base patrimonial del piloto sin duplicar el costo ejecutado directo.</div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     else:
-        st.info("No hay datos válidos para graficar Suministro / Montaje.")
-
-    render_inputs_project_gantt()
-    render_inputs_item_analytics(base)
-    render_inputs_factor_chart(base)
+        st.markdown(
+            f"""
+            <div class="inputs-fin-detail">
+              <div class="inputs-fin-detail-k">Sub-bloque activo</div>
+              <div class="inputs-fin-detail-h">Know-how FW incorporado al activo</div>
+              <div class="inputs-fin-detail-s">
+                Este componente reconoce el conocimiento técnico acumulado y aplicado en la arquitectura, diseño e integración
+                del activo como un aporte valorizado dentro de la lectura patrimonial del sistema.
+              </div>
+              <div class="inputs-fin-detail-grid">
+                <div class="inputs-fin-detail-box">
+                  <div class="inputs-fin-detail-box-k">Valor referencial</div>
+                  <div class="inputs-fin-detail-box-v">{format_clp(know_how_fw)}</div>
+                </div>
+                <div class="inputs-fin-detail-box">
+                  <div class="inputs-fin-detail-box-k">Fuente</div>
+                  <div class="inputs-fin-detail-box-v">Valorización FW · G7</div>
+                </div>
+                <div class="inputs-fin-detail-box">
+                  <div class="inputs-fin-detail-box-k">Rol en el activo</div>
+                  <div class="inputs-fin-detail-box-v">Reconoce el conocimiento técnico incorporado que habilita operación, replicabilidad y escalamiento.</div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def build_item_color_map(item_to_category: dict) -> dict:
@@ -2145,12 +2492,14 @@ def render_pagos_hitos(
             )
 
         st.subheader("Hitos de pagos")
-        unit_sel = st.selectbox(
-            "Moneda/escala",
-            ["USD (miles)", "CLP (millones)"],
-            index=0,
-            key=f"{key_prefix}pay_currency_selector",
-        )
+        ctrl_col1, ctrl_col2 = st.columns([1, 1.15], gap="large")
+        with ctrl_col1:
+            unit_sel = st.selectbox(
+                "Moneda/escala",
+                ["USD (miles)", "CLP (millones)"],
+                index=0,
+                key=f"{key_prefix}pay_currency_selector",
+            )
         if unit_sel.startswith("USD"):
             scale_factor = 1.0 / 1_000.0
             axis_unit = "miles USD"
@@ -2171,16 +2520,17 @@ def render_pagos_hitos(
         def scale_usd(series: pd.Series) -> pd.Series:
             return series * scale_factor
 
-        view_sel = st.selectbox(
-            "Selecciona vista",
-            [
-                "1) Inyección por hito (Anticipo/FAT/SAT)",
-                "2) Inyección por ítem",
-                "3) Total por período + categoría",
-            ],
-            index=1,
-            key=f"{key_prefix}pay_view_selector",
-        )
+        with ctrl_col2:
+            view_sel = st.selectbox(
+                "Selecciona vista",
+                [
+                    "1) Inyección por hito (Anticipo/FAT/SAT)",
+                    "2) Inyección por ítem",
+                    "3) Total por período + categoría",
+                ],
+                index=1,
+                key=f"{key_prefix}pay_view_selector",
+            )
 
         if view_sel.startswith("1"):
             df_flujo_plot = df_consolidado.copy()
@@ -2520,26 +2870,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-trace_cols = st.columns(4)
-trace_items = [
-    ("Corte de datos", pd.Timestamp.now().strftime("%d-%m-%Y %H:%M"), "Último render de la versión mercado."),
-    ("Tipo de cambio", f"{fx_used:,.0f} CLP/USD".replace(",", "."), "Parámetro global aplicado al modelo."),
-    ("Fuente CAPEX 80 kW", "Google Sheets publicado", "Hoja fija conectada desde el código."),
-    ("Estatus de lectura", "Ejecutado / referencial", "Mezcla de costos ejecutados y valorizaciones explícitamente separadas."),
-]
-for col, (label, value, subtitle) in zip(trace_cols, trace_items):
-    with col:
-        st.markdown(
-            f"""
-            <div style="border-radius:16px;padding:14px 16px;border:1px solid rgba(148,163,184,.20);background:#fff;box-shadow:0 6px 14px rgba(15,23,42,.04);margin-bottom:12px;">
-                <div style="font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">{label}</div>
-                <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.15;margin-bottom:6px;">{value}</div>
-                <div style="font-size:13px;line-height:1.45;color:#475569;">{subtitle}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
 total_items = len(df_capex)
 total_categorias = df_cat["Categoria"].nunique()
 cat_top = df_cat.iloc[0]["Categoria"] if total_categorias > 0 else "-"
@@ -2682,7 +3012,11 @@ def render_resumen_content(
         height=420,
         bargap=0.25,
     )
-    st.plotly_chart(fig_item_total, use_container_width=True)
+    st.plotly_chart(
+        fig_item_total,
+        use_container_width=True,
+        key=f"{key_prefix}fig_item_total",
+    )
     st.session_state["fig_item_total"] = fig_item_total
 
     st.markdown("### Secuencia de Ejecución del CAPEX y Desarrollo del Proyecto")
@@ -2772,7 +3106,11 @@ def render_resumen_content(
                         height=520,
                         legend_title_text="Ítem",
                     )
-                    st.plotly_chart(fig_timeline_cat, use_container_width=True)
+                    st.plotly_chart(
+                        fig_timeline_cat,
+                        use_container_width=True,
+                        key=f"{key_prefix}fig_timeline_cat",
+                    )
 
     render_pagos_hitos(
         capex_url,
@@ -3075,7 +3413,7 @@ def render_direccion_module_content():
         )
         capex_mas_direccion = capex_total_clp + total_direccion
 
-        dk1, dk2, dk3, dk4 = st.columns(4)
+        dk1, dk2, dk3 = st.columns(3)
         with dk1:
             kpi_card(
                 "Fondos dirección (CLP)",
@@ -3094,13 +3432,6 @@ def render_direccion_module_content():
                 f"{total_meses:,.0f}".replace(",", "."),
                 "Suma de meses reportados por cargo."
             )
-        with dk4:
-            kpi_card(
-                "CAPEX + Dirección",
-                format_clp(capex_mas_direccion),
-                "Vista referencial si quisieras observar ambos bloques juntos."
-            )
-
         df_direccion["Total_MM"] = df_direccion["Total"] / 1e6
         df_direccion["Costo_mensual_fmt"] = df_direccion["Costo empresa mensual"].apply(format_clp)
         df_direccion["Total_fmt"] = df_direccion["Total"].apply(format_clp)
@@ -4363,16 +4694,8 @@ elif selected_input_block == "escalamiento":
     capex_80kw_usd_total = float(df_capex_base["Monto_USD"].sum() or 0.0) if "Monto_USD" in df_capex_base.columns else 0.0
     capex_80kw_val = (capex_80kw_usd_total * fx_used) + float(direccion_total_clp or 0.0)
     capital_recaudar_val = capex_10kw_val + capex_80kw_val
-    pct_gap_10kw = (capex_10kw_val / capital_recaudar_val) if capital_recaudar_val > 0 else 0.0
-    pct_scale_80kw = (capex_80kw_val / capital_recaudar_val) if capital_recaudar_val > 0 else 0.0
-    use_cols = st.columns(3)
-    with use_cols[0]:
-        kpi_card("Brecha piloto 10 kW", format_clp(capex_10kw_val), "Capital pendiente para cerrar validación inicial.", variant="sky")
-    with use_cols[1]:
-        kpi_card("Escalamiento 80 kW", format_clp(capex_80kw_val), "Capital asociado a ejecución industrial y capital humano.")
-    with use_cols[2]:
-        kpi_card("Mix de uso de fondos", f"{pct_gap_10kw:.0%} / {pct_scale_80kw:.0%}", "10 kW vs 80 kW dentro del capital total.", variant="green")
-
+    capex_10kw_pct = (capex_10kw_val / capital_recaudar_val * 100.0) if capital_recaudar_val > 0 else 0.0
+    capex_80kw_pct = (capex_80kw_val / capital_recaudar_val * 100.0) if capital_recaudar_val > 0 else 0.0
     capex_10kw_active = st.session_state.get(capex_selector_state_key) == "10kw"
     capex_80kw_active = st.session_state.get(capex_selector_state_key) == "80kw"
     st.markdown(
@@ -4448,6 +4771,8 @@ elif selected_input_block == "escalamiento":
             border-bottom:1px solid rgba(226,232,240,.9);
         }
         .capex-summary-row:last-child{border-bottom:none;padding-bottom:0}
+        .capex-summary-row.total .capex-summary-label{color:#0f766e;}
+        .capex-summary-row.total .capex-summary-value{color:#0f766e;}
         .capex-summary-label{
             font-size:14px;
             font-weight:700;
@@ -4493,8 +4818,15 @@ elif selected_input_block == "escalamiento":
             font-weight:900;
             line-height:1;
             color:#0f172a;
+            margin-bottom:8px;
+        }
+        .capex-detail-pct{
+            font-size:13px;
+            font-weight:800;
+            color:#0f766e;
             margin-bottom:10px;
         }
+        .capex-detail-card.active .capex-detail-pct{color:#065f46;}
         .capex-detail-s{
             font-size:14px;
             line-height:1.5;
@@ -4520,14 +4852,14 @@ elif selected_input_block == "escalamiento":
             <div class="capex-summary-panel">
               <div class="capex-summary-panel-h">Destino del capital</div>
               <div class="capex-summary-row">
-                <div class="capex-summary-label">CAPEX 10kW</div>
+                <div class="capex-summary-label">Brecha piloto 10 kW</div>
                 <div class="capex-summary-value">{format_clp(capex_10kw_val)}</div>
               </div>
               <div class="capex-summary-row">
-                <div class="capex-summary-label">CAPEX 80kW</div>
+                <div class="capex-summary-label">Escalamiento 80 kW</div>
                 <div class="capex-summary-value">{format_clp(capex_80kw_val)}</div>
               </div>
-              <div class="capex-summary-row">
+              <div class="capex-summary-row total">
                 <div class="capex-summary-label">Capital total requerido</div>
                 <div class="capex-summary-value">{format_clp(capital_recaudar_val)}</div>
               </div>
@@ -4544,19 +4876,41 @@ elif selected_input_block == "escalamiento":
         f"""
         <div class="capex-detail-grid">
           <div class="capex-detail-card {'active' if capex_10kw_active else ''}">
-            <div class="capex-detail-k">Base de referencia</div>
+            <div class="capex-detail-k">Brecha piloto 10 kW</div>
             <div class="capex-detail-t">{format_clp(capex_10kw_val)}</div>
+            <div class="capex-detail-pct">{capex_10kw_pct:.1f}% del Capital a Recaudar</div>
             <div class="capex-detail-s">CAPEX 10kW asociado al piloto de validación tecnológica inicial.</div>
           </div>
           <div class="capex-detail-card {'active' if capex_80kw_active else ''}">
-            <div class="capex-detail-k">Escalamiento integrado</div>
+            <div class="capex-detail-k">Escalamiento 80 kW</div>
             <div class="capex-detail-t">{format_clp(capex_80kw_val)}</div>
+            <div class="capex-detail-pct">{capex_80kw_pct:.1f}% del Capital a Recaudar</div>
             <div class="capex-detail-s">CAPEX 80kW total, incorporando estructura técnica y capital humano asociado.</div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    capex10_col, capex80_col = st.columns(2)
+    with capex10_col:
+        st.button(
+            "Seleccionado" if capex_10kw_active else "Seleccionar CAPEX 10kW",
+            key="inputs_capex_focus_kpi_10kw",
+            use_container_width=True,
+            type="primary" if capex_10kw_active else "secondary",
+            on_click=_set_capex_focus,
+            args=("10kw",),
+        )
+    with capex80_col:
+        st.button(
+            "Seleccionado" if capex_80kw_active else "Seleccionar CAPEX 80kW",
+            key="inputs_capex_focus_kpi_80kw",
+            use_container_width=True,
+            type="primary" if capex_80kw_active else "secondary",
+            on_click=_set_capex_focus,
+            args=("80kw",),
+        )
 
     uso_fondos_df = pd.DataFrame(
         [
@@ -4586,26 +4940,6 @@ elif selected_input_block == "escalamiento":
         hide_index=True,
         use_container_width=True,
     )
-
-    capex10_col, capex80_col = st.columns(2)
-    with capex10_col:
-        st.button(
-            "Seleccionado" if capex_10kw_active else "Seleccionar CAPEX 10kW",
-            key="inputs_capex_focus_kpi_10kw",
-            use_container_width=True,
-            type="primary" if capex_10kw_active else "secondary",
-            on_click=_set_capex_focus,
-            args=("10kw",),
-        )
-    with capex80_col:
-        st.button(
-            "Seleccionado" if capex_80kw_active else "Seleccionar CAPEX 80kW",
-            key="inputs_capex_focus_kpi_80kw",
-            use_container_width=True,
-            type="primary" if capex_80kw_active else "secondary",
-            on_click=_set_capex_focus,
-            args=("80kw",),
-        )
 
     if capex_10kw_active:
         render_inputs_capex_10kw_detail()
@@ -5521,7 +5855,7 @@ def render_direccion_module_content():
         )
         capex_mas_direccion = capex_total_clp + total_direccion
 
-        dk1, dk2, dk3, dk4 = st.columns(4)
+        dk1, dk2, dk3 = st.columns(3)
         with dk1:
             kpi_card(
                 "Fondos dirección (CLP)",
@@ -5540,13 +5874,6 @@ def render_direccion_module_content():
                 f"{total_meses:,.0f}".replace(",", "."),
                 "Suma de meses reportados por cargo."
             )
-        with dk4:
-            kpi_card(
-                "CAPEX + Dirección",
-                format_clp(capex_mas_direccion),
-                "Vista referencial si quisieras observar ambos bloques juntos."
-            )
-
         df_direccion["Total_MM"] = df_direccion["Total"] / 1e6
         df_direccion["Costo_mensual_fmt"] = df_direccion["Costo empresa mensual"].apply(format_clp)
         df_direccion["Total_fmt"] = df_direccion["Total"].apply(format_clp)

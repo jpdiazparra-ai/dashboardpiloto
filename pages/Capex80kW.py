@@ -1611,7 +1611,7 @@ def build_inputs_gantt_figure(df: pd.DataFrame, date_mode: str = "Real", color_b
                 dict(step="all", label="All"),
             ])
         ),
-        rangeslider=dict(visible=True),
+        rangeslider=dict(visible=False),
         showgrid=True,
         gridcolor="rgba(60,60,67,0.08)",
     )
@@ -1658,10 +1658,11 @@ def render_inputs_project_gantt():
         fase_default = "Instalación Turbina" if "Instalación Turbina" in fases else "Todas"
         if "inputs_gantt_fase" not in st.session_state:
             st.session_state["inputs_gantt_fase"] = fase_default
+        elif st.session_state["inputs_gantt_fase"] not in fase_options:
+            st.session_state["inputs_gantt_fase"] = fase_default
         fase_sel = st.selectbox(
             "Fase",
             fase_options,
-            index=fase_options.index(st.session_state.get("inputs_gantt_fase", fase_default)),
             key="inputs_gantt_fase",
         )
     with c2:

@@ -6,25 +6,32 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from io import BytesIO
+import base64
 import plotly.io as pio
 import re
 import unicodedata
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    Image,
-    PageBreak,
-)
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.lib import colors
 import math
 import plotly.graph_objects as go
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from pathlib import Path
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+        Image,
+        PageBreak,
+    )
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    REPORTLAB_AVAILABLE = True
+except ModuleNotFoundError:
+    REPORTLAB_AVAILABLE = False
 
 
 # =========================
@@ -73,6 +80,140 @@ EERRV2_CSV_URL_DEFAULT = (
     "2PACX-1vQfQcSn40boiOyRvYeX1j5SO2O9w3WoA6DkOEMxxf85v-WiWXuMC-uyBWb3-ff82pUfk1cSaBnmrcqU/"
     "pub?gid=372370214&single=true&output=csv"
 )
+
+_HERO_CANDIDATES = [
+    (Path(__file__).parent / "assets" / "hero_vawt.jpg").resolve(),
+    (Path(__file__).parent / "hero_vawt.jpg").resolve(),
+]
+
+
+def _hero_path():
+    for candidate in _HERO_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def render_inputs_main_hero() -> None:
+    path = _hero_path()
+    hero_bg_css = ""
+    if path:
+        suffix = path.suffix.lower()
+        mime = "image/jpeg"
+        if suffix == ".png":
+            mime = "image/png"
+        elif suffix == ".webp":
+            mime = "image/webp"
+        encoded = base64.b64encode(path.read_bytes()).decode()
+        hero_bg_css = f"background-image:url('data:{mime};base64,{encoded}');"
+
+    st.markdown(
+        f"""
+        <style>
+        .inputs-main-hero-shell{{
+            margin:4px 0 24px 0;
+            min-height:210px;
+            border-radius:30px;
+            position:relative;
+            overflow:hidden;
+            padding:24px 30px 22px 30px;
+            border:1px solid rgba(191,219,254,.42);
+            box-shadow:0 22px 42px rgba(15,23,42,.12);
+            background:#eff6ff;
+        }}
+        .inputs-main-hero-shell::before{{
+            content:"";
+            position:absolute;
+            inset:0;
+            background-size:cover;
+            background-position:center 30%;
+            opacity:.96;
+            z-index:0;
+            {hero_bg_css}
+        }}
+        .inputs-main-hero-shell::after{{
+            content:"";
+            position:absolute;
+            inset:0;
+            z-index:1;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.84) 0%, rgba(255,255,255,.62) 28%, rgba(15,23,42,.20) 100%),
+                linear-gradient(90deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.02) 34%, rgba(15,23,42,.14) 100%);
+        }}
+        .inputs-main-hero-content{{
+            position:relative;
+            z-index:2;
+            max-width:1200px;
+        }}
+        .inputs-main-hero-top{{
+            display:flex;
+            align-items:flex-start;
+            gap:16px;
+        }}
+        .inputs-main-hero-ico{{
+            width:56px;
+            height:56px;
+            border-radius:18px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:34px;
+            background:linear-gradient(180deg,#eff6ff 0%,#dbeafe 100%);
+            border:1px solid rgba(96,165,250,.26);
+            box-shadow:0 10px 24px rgba(59,130,246,.12);
+            flex:0 0 auto;
+            margin-top:4px;
+        }}
+        .inputs-main-hero-title{{
+            font-size: clamp(34px, 4.6vw, 58px);
+            line-height:1.02;
+            font-weight:900;
+            letter-spacing:-0.03em;
+            color:#111827;
+            margin:0;
+            text-shadow:0 1px 0 rgba(255,255,255,.30);
+        }}
+        .inputs-main-hero-sub{{
+            font-size:15px;
+            line-height:1.65;
+            color:#4b5563;
+            max-width:1080px;
+            margin:14px 0 0 0;
+        }}
+        @media (max-width: 900px){{
+            .inputs-main-hero-shell{{
+                min-height:160px;
+                border-radius:24px;
+                padding:18px 18px 16px 18px;
+            }}
+            .inputs-main-hero-top{{
+                gap:12px;
+            }}
+            .inputs-main-hero-ico{{
+                width:46px;
+                height:46px;
+                font-size:28px;
+                border-radius:14px;
+            }}
+        }}
+        </style>
+        <div class="inputs-main-hero-shell">
+          <div class="inputs-main-hero-content">
+            <div class="inputs-main-hero-top">
+              <div class="inputs-main-hero-ico">📊</div>
+              <div>
+                <h1 class="inputs-main-hero-title">Arquitectura de Inversión y Creación de Valor</h1>
+                <p class="inputs-main-hero-sub">
+                  Panel interactivo para analizar la estructura de inversión del piloto de turbina eólica vertical híbrida.
+                  Diseñado para uso en directorio, comité técnico y seguimiento de proyecto.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 DASHBOARD_FINANCIERO_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vQmVzOg9X7VfxAmOImXHuMvyH4dQmxbFL3DIBqOubi32jKLncgqBEBwnl6j0dXWsm5FkRAcrY4y8BD2/"
@@ -796,6 +937,10 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
         capacidades_externo = 0.0
         know_how_fw = 0.0
 
+    fin_nav_key = "inputs_financiero_asset_sel"
+    if fin_nav_key not in st.session_state:
+        st.session_state[fin_nav_key] = None
+
     st.markdown(
         """
         <style>
@@ -826,6 +971,13 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
             border:1px solid rgba(165,180,252,.45);background:#eef2ff;color:#3730a3
         }
         .inputs-fin-note{font-size:13px;line-height:1.5;color:#475569;margin-top:6px}
+        .inputs-fin-selector-row{
+            display:grid;
+            grid-template-columns:1.45fr .85fr .85fr;
+            gap:16px;
+            margin:0 0 18px 0;
+        }
+        @media (max-width:1400px){.inputs-fin-selector-row{grid-template-columns:1fr;}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -834,7 +986,7 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
     cards = f"""
     <div class="inputs-fin-summary">
       <div class="inputs-fin-hero">
-        <div class="inputs-fin-row"><div class="inputs-fin-ico">💰</div><div class="inputs-fin-h">Inversión Ejecutada en el Activo Tecnológico</div></div>
+        <div class="inputs-fin-row"><div class="inputs-fin-ico">💰</div><div class="inputs-fin-h">Costo Ejecutado</div></div>
         <div class="inputs-fin-v">{html.escape(format_clp(monto_total))}</div>
         <div class="inputs-fin-sub">
           <span class="inputs-fin-chip">Base: {n_items:,} ítems</span>
@@ -857,10 +1009,30 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
     </div>
     """
     st.markdown(cards, unsafe_allow_html=True)
+
+    st.markdown('<div class="inputs-fin-selector-row">', unsafe_allow_html=True)
+    selector_cards = [
+        ("costo_ejecutado", "Costo Ejecutado"),
+        ("capacidades_externas", "Capacidades externo"),
+        ("know_how_fw", "Know-how FW"),
+    ]
+    selector_cols = st.columns([1.45, 0.85, 0.85])
+    for idx, (value, _label) in enumerate(selector_cards):
+        is_active = st.session_state.get(fin_nav_key) == value
+        with selector_cols[idx]:
+            st.button(
+                "Seleccionado" if is_active else "Abrir bloque",
+                key=f"inputs_fin_asset_selector_{idx}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+                on_click=lambda selected=value: st.session_state.__setitem__(fin_nav_key, selected),
+            )
+    st.markdown("</div>", unsafe_allow_html=True)
     return {
         "monto_total": monto_total,
         "capacidades_externo": capacidades_externo,
         "know_how_fw": know_how_fw,
+        "selected": st.session_state.get(fin_nav_key),
     }
 
 
@@ -886,36 +1058,51 @@ def make_inputs_suministro_chart(df_in: pd.DataFrame):
 
     total = float(agg["Monto"].sum() or 0.0)
     agg["% del total"] = np.where(total > 0, agg["Monto"] / total * 100.0, 0.0)
+    agg["Monto_MM"] = agg["Monto"] / 1_000_000.0
     orden = ["Suministro", "I+D", "Montaje"]
     agg["__ord"] = agg["Categoria"].apply(lambda x: orden.index(x) if x in orden else 999)
     agg = agg.sort_values(["__ord", "Monto"], ascending=[True, False]).drop(columns="__ord")
-    agg["label_pct"] = agg["% del total"].map(lambda v: f"{v:.2f}%")
+    agg["label_pct"] = agg.apply(lambda r: f"{r['% del total']:.2f}% · {r['Monto_MM']:.1f} MM", axis=1)
 
     fig = px.bar(
         agg,
-        x="Monto",
+        x="Monto_MM",
         y="Categoria",
         orientation="h",
         color="Categoria",
         color_discrete_map=FIN_PALETTE_SM,
         text="label_pct",
-        title="Suministro / Montaje — Monto y % del total",
+        title="Distribución técnica por frente de ejecución",
     )
     fig.update_traces(
-        textposition="outside",
-        customdata=np.stack([agg["% del total"], agg["Items"]], axis=-1),
+        textposition="inside",
+        insidetextanchor="middle",
+        marker=dict(line=dict(color="rgba(255,255,255,0.85)", width=1.2)),
         hovertemplate=(
-            "<b>%{y}</b><br>Monto: $%{x:,.0f}<br>% del total: %{customdata[0]:.2f}%"
+            "<b>%{y}</b><br>Monto: $%{customdata[2]:,.0f}<br>% del total: %{customdata[0]:.2f}%"
             "<br>N° ítems: %{customdata[1]}<extra></extra>"
         ),
+        customdata=np.stack([agg["% del total"], agg["Items"], agg["Monto"]], axis=-1),
     )
     fig.update_layout(
-        xaxis_title="Monto (CLP)",
-        yaxis_title="Categoría",
-        margin=dict(l=80, r=40, t=60, b=40),
+        xaxis_title="Monto ejecutado (MM CLP)",
+        yaxis_title="Frente técnico",
+        margin=dict(l=12, r=12, t=64, b=18),
         legend_title="S/M",
+        height=360,
+        bargap=0.28,
+        plot_bgcolor="white",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#334155", size=13),
+        title=dict(font=dict(size=22, color="#0f172a"), x=0.02),
     )
-    fig.update_xaxes(separatethousands=True)
+    fig.update_xaxes(
+        ticksuffix=" MM",
+        showgrid=True,
+        gridcolor="rgba(148,163,184,0.22)",
+        zeroline=False,
+    )
+    fig.update_yaxes(showgrid=False)
     return fig, agg
 
 
@@ -1019,7 +1206,7 @@ def render_inputs_item_analytics(df_in: pd.DataFrame):
     df[item_col] = df[item_col].astype(str).str.strip().replace({"": np.nan, "nan": np.nan}).fillna("(Vacío)")
     df[cat_col] = df[cat_col].astype(str).str.strip().replace({"": np.nan, "nan": np.nan}).fillna("(Sin categoría)")
 
-    st.markdown("### 🧩 Análisis Detallado de Componentes de Inversión")
+    st.markdown("### Desglose de Componentes de Inversión")
     c1, c2 = st.columns([1, 1])
     with c1:
         top_n = st.selectbox("Top N por monto", [5, 10, 15, 20, 30], index=2, key="inputs_fin_top_n")
@@ -1181,7 +1368,7 @@ def render_inputs_factor_chart(df_in: pd.DataFrame):
     agg_fc = agg_fc.sort_values(["__of", "__oc"]).drop(columns=["__of", "__oc"])
     agg_fc["label"] = agg_fc.apply(lambda r: f"{format_clp(float(r['Monto']))} · {float(r['% dentro del Factor']):.2f}%", axis=1)
 
-    st.markdown("### 📊 Eficiencia del CAPEX – Inversión Necesaria vs Optimizable")
+    st.markdown("### Eficiencia del CAPEX Ejecutado")
     fig_fc = px.bar(
         agg_fc,
         x="Monto",
@@ -1428,7 +1615,7 @@ def render_inputs_project_gantt():
     if df_gantt.empty or "Tarea / Entregable" not in df_gantt.columns:
         return
 
-    st.markdown("### 🗓️ Cronograma de Ejecución y Validación – Piloto 10 kW")
+    st.markdown("### Cronograma de Ejecución y Validación")
     st.caption("Vista integrada del cronograma del proyecto antes del análisis financiero por categorías.")
 
     c1, c2, c3 = st.columns([5, 2, 2])
@@ -1492,6 +1679,56 @@ def render_inputs_contexto_block():
     st.markdown(
         """
         <style>
+        .context-hero{
+            border-radius:24px;
+            padding:20px 22px 18px 22px;
+            background:
+                radial-gradient(circle at top right, rgba(14,165,164,.14), transparent 28%),
+                linear-gradient(90deg,#f8fbff 0%,#e9f6ff 48%,#d7efff 100%);
+            border:1px solid rgba(125,211,252,.42);
+            box-shadow:0 16px 34px rgba(15,23,42,.08);
+            margin-bottom:18px;
+        }
+        .context-hero-k{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#0f766e;
+            margin-bottom:8px;
+        }
+        .context-hero-t{
+            font-size:34px;
+            font-weight:900;
+            line-height:1.08;
+            color:#0f172a;
+            margin-bottom:10px;
+            max-width:920px;
+        }
+        .context-hero-s{
+            font-size:15px;
+            line-height:1.6;
+            color:#475569;
+            max-width:980px;
+            margin-bottom:14px;
+        }
+        .context-hero-band{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+        }
+        .context-hero-chip{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding:8px 12px;
+            border-radius:999px;
+            background:rgba(255,255,255,.82);
+            border:1px solid rgba(148,163,184,.22);
+            color:#334155;
+            font-size:12px;
+            font-weight:700;
+        }
         .context-stat{
             border-radius:18px;
             padding:16px 18px;
@@ -1528,6 +1765,11 @@ def render_inputs_contexto_block():
             box-shadow:0 10px 24px rgba(15,23,42,.05);
             margin-bottom:16px;
             height:100%;
+        }
+        .context-card:hover{
+            transform:translateY(-1px);
+            box-shadow:0 16px 30px rgba(15,23,42,.08);
+            transition:all .18s ease;
         }
         .context-card-h{
             font-size:17px;
@@ -1566,12 +1808,44 @@ def render_inputs_contexto_block():
             line-height:1.5;
             color:#334155;
         }
+        .context-grid-head{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748b;
+            margin:2px 0 12px 0;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("### Validación integrada de aerodinámica, sistema eléctrico, estructura y manufactura para habilitar el escalamiento a 80 kW")
+    stage_counts = {
+        "Diseño y Optimización del Sistema": min(total_sections, 3),
+        "Ingeniería Aplicada y Manufactura": max(0, min(total_sections - 3, 3)),
+        "Integración y Validación del Activo": max(0, min(total_sections - 6, 2)),
+    }
+    st.markdown(
+        f"""
+        <div class="context-hero">
+          <div class="context-hero-k">Ruta de Validación</div>
+          <div class="context-hero-t">Validación Integrada del Sistema</div>
+          <div class="context-hero-s">
+            Lectura técnica estructurada para consolidar la validación del activo, conectando diseño, manufactura e integración como base habilitante para el escalamiento.
+          </div>
+          <div class="context-hero-band">
+            <div class="context-hero-chip">Hitos técnicos: {total_sections}</div>
+            <div class="context-hero-chip">Frentes documentados: {total_bullets}</div>
+            <div class="context-hero-chip">Diseño: {stage_counts["Diseño y Optimización del Sistema"]}</div>
+            <div class="context-hero-chip">Manufactura: {stage_counts["Ingeniería Aplicada y Manufactura"]}</div>
+            <div class="context-hero-chip">Integración: {stage_counts["Integración y Validación del Activo"]}</div>
+          </div>
+        </div>
+        <div class="context-grid-head">Matriz técnica de hitos</div>
+        """,
+        unsafe_allow_html=True,
+    )
     rows = [contexto_sections[i:i + 2] for i in range(0, len(contexto_sections), 2)]
     for row_sections in rows:
         cols = st.columns(len(row_sections))
@@ -1746,6 +2020,10 @@ def render_inputs_estado_actual_dashboard():
         ("contexto", "Construcción del Activo Tecnológico (en ejecución)"),
         ("financiero", "Materialización del Activo – Piloto 10 kW"),
     ]
+    estado_subblock_icons = {
+        "contexto": "🛠️",
+        "financiero": "🧱",
+    }
     if estado_subblock_key not in st.session_state:
         st.session_state[estado_subblock_key] = None
 
@@ -1757,7 +2035,12 @@ def render_inputs_estado_actual_dashboard():
                 f"""
                 <div class="inputs-nav-card {'active' if is_active else ''}">
                     <div class="inputs-nav-k">Sub-bloque {idx + 1}</div>
-                    <div class="inputs-nav-t">{block_title}</div>
+                    <div class="inputs-nav-title-row">
+                        <div class="inputs-nav-ico">{estado_subblock_icons.get(block_value, '📁')}</div>
+                        <div class="inputs-nav-title-wrap">
+                            <div class="inputs-nav-t">{block_title}</div>
+                        </div>
+                    </div>
                     <div class="inputs-nav-s">{'Seleccionado para análisis' if is_active else 'Haz clic para abrir este sub-bloque'}</div>
                 </div>
                 """,
@@ -1890,7 +2173,7 @@ def render_inputs_estado_actual_dashboard():
           <div class="asset-hero-grid">
             <div>
               <div class="asset-hero-k">Resumen patrimonial técnico</div>
-              <div class="asset-hero-t">Valor del Activo Tecnológico Construido</div>
+              <div class="asset-hero-t">Costo ejecutado en Activo Tecnológico Construido</div>
               <div class="asset-hero-v">{format_clp(valor_activo_tecnologico)}</div>
               <div class="asset-hero-p">
                 Valor consolidado del activo construido considerando inversión ejecutada,
@@ -1922,20 +2205,22 @@ def render_inputs_estado_actual_dashboard():
         unsafe_allow_html=True,
     )
 
-    st.markdown("### Estado Técnico-Financiero Consolidado – Piloto 10 kW")
-    render_inputs_financial_main_kpis(base)
+    st.markdown("### Estado Técnico-Financiero del Piloto 10 kW")
+    financial_kpis = render_inputs_financial_main_kpis(base)
+    selected_financial_asset = financial_kpis.get("selected", "costo_ejecutado")
 
-    st.markdown("### 📂 Distribución de Inversión por Categoría Técnica – Piloto 10 kW")
-    fig_sm, tabla_sm = make_inputs_suministro_chart(base)
-    if fig_sm is not None and tabla_sm is not None and not tabla_sm.empty:
-        render_inputs_sm_kpi_cards(tabla_sm)
-        st.plotly_chart(fig_sm, use_container_width=True)
-    else:
-        st.info("No hay datos válidos para graficar Suministro / Montaje.")
+    if selected_financial_asset == "costo_ejecutado":
+        st.markdown("### Distribución de Inversión por Categoría Técnica")
+        fig_sm, tabla_sm = make_inputs_suministro_chart(base)
+        if fig_sm is not None and tabla_sm is not None and not tabla_sm.empty:
+            render_inputs_sm_kpi_cards(tabla_sm)
+            st.plotly_chart(fig_sm, use_container_width=True)
+        else:
+            st.info("No hay datos válidos para graficar Suministro / Montaje.")
 
-    render_inputs_project_gantt()
-    render_inputs_item_analytics(base)
-    render_inputs_factor_chart(base)
+        render_inputs_project_gantt()
+        render_inputs_item_analytics(base)
+        render_inputs_factor_chart(base)
 
 
 def build_item_color_map(item_to_category: dict) -> dict:
@@ -2476,11 +2761,7 @@ capex_total_integrado_real_clp = float(capex_total_real_clp or capex_total_clp) 
 # =========================
 # HEADER
 # =========================
-st.title("📊 Arquitectura de Inversión y Creación de Valor")
-st.caption(
-    "Panel interactivo para analizar la estructura de inversión del piloto de turbina eólica vertical híbrida. "
-    "Diseñado para uso en directorio, comité técnico y seguimiento de proyecto."
-)
+render_inputs_main_hero()
 
 total_items = len(df_capex)
 total_categorias = df_cat["Categoria"].nunique()
@@ -2727,14 +3008,17 @@ def render_resumen_content(
     if include_export:
         st.markdown("---")
         st.subheader("📄 Exportar informe técnico")
-        pdf_bytes = build_pdf_report()
-        st.download_button(
-            label="📥 Descargar reporte PDF técnico (CAPEX Piloto 80 kW)",
-            data=pdf_bytes,
-            file_name="Reporte_CAPEX_Piloto_80kW.pdf",
-            mime="application/pdf",
-            key=f"{key_prefix}download_pdf_report",
-        )
+        if REPORTLAB_AVAILABLE:
+            pdf_bytes = build_pdf_report()
+            st.download_button(
+                label="📥 Descargar reporte PDF técnico (CAPEX Piloto 80 kW)",
+                data=pdf_bytes,
+                file_name="Reporte_CAPEX_Piloto_80kW.pdf",
+                mime="application/pdf",
+                key=f"{key_prefix}download_pdf_report",
+            )
+        else:
+            st.info("La exportación PDF está deshabilitada porque `reportlab` no está instalado en este entorno.")
 
 # =========================
 # KPI CARDS – DISEÑO PRO
@@ -3121,14 +3405,11 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     def _set_valorizacion_bloque(value: str):
         st.session_state[state_block_key] = value
 
-    st.subheader("Modelo de Valorización y Generación de Valor Económico")
-    st.caption("Vista técnica conectada a la hoja publicada de valorización.")
-
     bloque_cards = [
-        ("1. Fundamentos de Creación de Valor", "1- Fundamentos de Creación de Valor"),
-        ("2. Inversión Inicial y Validación Tecnológica (Serie A)", "2-Inversión Inicial y Validación Tecnológica (Serie A)"),
-        ("3. Escenario de Valorización Post-Validación", "3-Escenario de Valorización Post-Validación"),
-        ("4. Escalamiento y Expansión Comercial (Serie B)", "4-Escalamiento y Expansión Comercial (Serie B)"),
+        ("1. Fundamentos de Creación de Valor", "Fundamentos de Creación de Valor"),
+        ("2. Serie A: Inversión Inicial y Validación", "Serie A: Inversión Inicial y Validación"),
+        ("3. Valorización Post-Validación", "Valorización Post-Validación"),
+        ("4. Serie B: Escalamiento Comercial", "Serie B: Escalamiento Comercial"),
     ]
     if state_bootstrap_key not in st.session_state:
         st.session_state[state_block_key] = None
@@ -3139,22 +3420,62 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     st.markdown(
         """
         <style>
+        .val-nav-shell{
+            border-radius:24px;
+            padding:16px 18px 12px 18px;
+            border:1px solid rgba(148,163,184,.18);
+            background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);
+            box-shadow:0 12px 28px rgba(15,23,42,.05);
+            margin-bottom:18px;
+        }
+        .val-nav-head{
+            font-size:12px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748b;
+            margin-bottom:10px;
+        }
+        .val-nav-guide{
+            font-size:14px;
+            line-height:1.55;
+            color:#475569;
+            margin-bottom:4px;
+        }
         .val-nav-card{
-            height:228px;
+            min-height:188px;
             display:flex;
             flex-direction:column;
-            justify-content:space-between;
+            justify-content:flex-start;
+            position:relative;
+            overflow:hidden;
             border-radius:20px;
-            padding:18px 18px 16px 18px;
-            border:1px solid rgba(148,163,184,.28);
-            background:linear-gradient(180deg,#f8fafc 0%,#ffffff 72%);
-            box-shadow:0 8px 18px rgba(15,23,42,.05);
-            margin-bottom:12px;
+            padding:16px 18px 14px 18px;
+            border:1px solid rgba(203,213,225,.75);
+            background:
+                radial-gradient(circle at top right, rgba(219,234,254,.35), transparent 26%),
+                linear-gradient(180deg,#f8fafc 0%,#ffffff 74%);
+            box-shadow:0 10px 24px rgba(15,23,42,.045);
+            margin-bottom:10px;
+        }
+        .val-nav-card:before{
+            content:"";
+            position:absolute;
+            left:0;
+            top:0;
+            bottom:0;
+            width:5px;
+            background:linear-gradient(180deg,#cbd5e1 0%,#e2e8f0 100%);
         }
         .val-nav-card.active{
-            border:1px solid rgba(22,163,74,.35);
-            box-shadow:0 14px 28px rgba(21,128,61,.14);
-            background:linear-gradient(90deg,#ecfdf5 0%,#d1fae5 38%,#a7f3d0 100%);
+            border:1px solid rgba(16,185,129,.34);
+            box-shadow:0 18px 36px rgba(16,185,129,.14);
+            background:
+                radial-gradient(circle at top right, rgba(52,211,153,.20), transparent 24%),
+                linear-gradient(90deg,#ecfdf5 0%,#d1fae5 40%,#a7f3d0 100%);
+        }
+        .val-nav-card.active:before{
+            background:linear-gradient(180deg,#059669 0%,#34d399 100%);
         }
         .val-nav-k{
             font-size:11px;
@@ -3162,18 +3483,34 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             letter-spacing:.10em;
             text-transform:uppercase;
             color:#64748B;
-            margin-bottom:8px;
+            margin-bottom:10px;
         }
         .val-nav-t{
-            font-size:20px;
-            font-weight:800;
+            font-size:18px;
+            font-weight:900;
             line-height:1.18;
             color:#0f172a;
-            margin-bottom:8px;
+            margin-bottom:10px;
+            max-width:22ch;
+        }
+        .val-nav-title-row{
+            display:flex;
+            align-items:flex-start;
+            gap:10px;
+            margin-bottom:10px;
+        }
+        .val-nav-ico{
+            font-size:22px;
+            line-height:1;
+            flex:0 0 auto;
+            margin-top:1px;
+        }
+        .val-nav-title-wrap{
+            min-width:0;
         }
         .val-nav-s{
-            font-size:13px;
-            line-height:1.45;
+            font-size:12px;
+            line-height:1.5;
             color:#475569;
         }
         .val-nav-card.active .val-nav-k{color:#166534;}
@@ -3184,16 +3521,37 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        """
+        <div class="val-nav-shell">
+          <div class="val-nav-head">Ruta de análisis</div>
+          <div class="val-nav-guide">Avanza desde fundamentos, hacia Serie A, valorización post-validación y escalamiento comercial.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     nav_cols = st.columns(4)
+    block_icons = {
+        "1. Fundamentos de Creación de Valor": "📊",
+        "2. Serie A: Inversión Inicial y Validación": "🏗️",
+        "3. Valorización Post-Validación": "📈",
+        "4. Serie B: Escalamiento Comercial": "🚀",
+    }
     for idx, (block_value, block_title) in enumerate(bloque_cards):
         is_active = st.session_state.get(state_block_key) == block_value
         with nav_cols[idx]:
             st.markdown(
                 f"""
                 <div class="val-nav-card {'active' if is_active else ''}">
-                    <div class="val-nav-k">Bloque {idx + 1}</div>
-                    <div class="val-nav-t">{block_title}</div>
-                    <div class="val-nav-s">{'Seleccionado para análisis' if is_active else 'Haz clic para abrir este escenario'}</div>
+                    <div class="val-nav-k">Sub-bloque {idx + 1}</div>
+                    <div class="val-nav-title-row">
+                      <div class="val-nav-ico">{block_icons.get(block_value, '📁')}</div>
+                      <div class="val-nav-title-wrap">
+                        <div class="val-nav-t">{block_title}</div>
+                      </div>
+                    </div>
+                    <div class="val-nav-s">{'Escenario activo para análisis' if is_active else 'Abrir escenario financiero'}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -3208,7 +3566,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             )
 
     if st.session_state.get(state_block_key) is None:
-        st.info("Selecciona uno de los bloques de valorización para abrir su contenido.")
+        st.info("Selecciona uno de los sub-bloques de valorización para abrir su contenido.")
         return
 
     try:
@@ -3293,16 +3651,18 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         "fx": int(round(fx_default or 915)),
         "pre_money": int(round(pre_money_actual_default)),
         "inv_clp": int(round(inversion_clp_default)),
+        "investment_currency": "CLP",
         "volume": int(round(volumen_default)),
         "ebitda_unit": int(round(ebitda_unit_default)),
         "multiple": float(multiple_default or 1.0),
         "ronda_pct": float((ronda_pct_default or 0.70) * 100.0),
+        "valuation_basis": "BASE INVERSION + KNOW-HOW",
         "alloc_manual": False,
         "fluxial_pct_manual": 50.0,
         "imelsa_pct_manual": 50.0,
     }
     bloque_sel = st.session_state.get(state_block_key)
-    shared_group = "base" if bloque_sel in {"1. Fundamentos de Creación de Valor", "2. Inversión Inicial y Validación Tecnológica (Serie A)"} else "post"
+    shared_group = "base" if bloque_sel in {"1. Fundamentos de Creación de Valor", "2. Serie A: Inversión Inicial y Validación"} else "post"
 
     def shared_state_key(name: str, group: str | None = None) -> str:
         active_group = group or shared_group
@@ -3323,6 +3683,25 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     def sync_widget_to_state(name: str, group: str | None = None):
         active_group = group or shared_group
         st.session_state[shared_state_key(name, active_group)] = st.session_state[shared_widget_key(name, active_group)]
+
+    def sync_investment_currency(group: str | None = None):
+        active_group = group or shared_group
+        currency = st.session_state[shared_widget_key("investment_currency", active_group)]
+        st.session_state[shared_state_key("investment_currency", active_group)] = currency
+        if currency == "USD":
+            fx_val = float(st.session_state.get(shared_state_key("fx", active_group), 1) or 1)
+            clp_val = float(st.session_state.get(shared_state_key("inv_clp", active_group), 0) or 0)
+            st.session_state[shared_widget_key("inv_usd_display", active_group)] = int(round(clp_val / fx_val)) if fx_val > 0 else 0
+
+    def sync_investment_usd_to_clp(group: str | None = None):
+        active_group = group or shared_group
+        fx_val = float(st.session_state.get(shared_state_key("fx", active_group), 1) or 1)
+        usd_val = float(st.session_state.get(shared_widget_key("inv_usd_display", active_group), 0) or 0)
+        st.session_state[shared_state_key("inv_clp", active_group)] = int(round(usd_val * fx_val))
+        st.session_state.pop(shared_widget_key("inv_clp", active_group), None)
+
+    def resolve_fluxial_pre_money(valuation_basis: str, base_usd: float, ebitda_value: float) -> float:
+        return base_usd if valuation_basis == "BASE INVERSION + KNOW-HOW" else ebitda_value
 
     group_widget_defaults = {
         "base": widget_defaults,
@@ -3395,12 +3774,48 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     )
 
     if bloque_sel == "1. Fundamentos de Creación de Valor":
-        pre_money_preview = float(st.session_state.get(shared_state_key("pre_money", "base"), pre_money_actual_default))
+        base_fx_preview = float(st.session_state.get(shared_state_key("fx", "base"), fx_default or 1))
+        base_currency_preview = str(st.session_state.get(shared_state_key("investment_currency", "base"), "CLP"))
         volume_preview = float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
         ebitda_unit_preview = float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
         multiple_preview = float(st.session_state.get(shared_state_key("multiple", "base"), multiple_default or 1))
+        valuation_basis_preview = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+        base_en_usd_preview = (total_base_knowhow_clp / base_fx_preview) if base_fx_preview > 0 else 0.0
         ebitda_preview = volume_preview * ebitda_unit_preview * multiple_preview
-        valorizacion_fluxial_preview = pre_money_preview + ebitda_preview
+        valorizacion_fluxial_preview = resolve_fluxial_pre_money(valuation_basis_preview, base_en_usd_preview, ebitda_preview)
+        if valuation_basis_preview == "BASE INVERSION + KNOW-HOW":
+            if base_currency_preview == "CLP":
+                composition_rows_preview = (
+                    f'<div class="val-summary-row">'
+                    f'<div class="val-summary-label">BASE INVERSION + KNOW-HOW</div>'
+                    f'<div class="val-summary-value">{format_clp(total_base_knowhow_clp)}</div>'
+                    f'</div>'
+                )
+                valorizacion_fluxial_preview_display = format_clp(valorizacion_fluxial_preview * base_fx_preview)
+            else:
+                composition_rows_preview = (
+                    f'<div class="val-summary-row">'
+                    f'<div class="val-summary-label">BASE INVERSION + KNOW-HOW</div>'
+                    f'<div class="val-summary-value">{format_clp(total_base_knowhow_clp)}</div>'
+                    f'</div>'
+                    f'<div class="val-summary-row">'
+                    f'<div class="val-summary-label">BASE INVERSION + KNOW-HOW EN USD</div>'
+                    f'<div class="val-summary-value">{format_usd(base_en_usd_preview)}</div>'
+                    f'</div>'
+                )
+                valorizacion_fluxial_preview_display = format_usd(valorizacion_fluxial_preview)
+        else:
+            composition_rows_preview = (
+                f'<div class="val-summary-row">'
+                f'<div class="val-summary-label">Múltiplo EBITDA</div>'
+                f'<div class="val-summary-value">{multiple_preview:.2f}x</div>'
+                f'</div>'
+                f'<div class="val-summary-row">'
+                f'<div class="val-summary-label">EBITDA potencial multiplicado</div>'
+                f'<div class="val-summary-value">{format_clp(ebitda_preview * base_fx_preview) if base_currency_preview == "CLP" else format_usd(ebitda_preview)}</div>'
+                f'</div>'
+            )
+            valorizacion_fluxial_preview_display = format_clp(valorizacion_fluxial_preview * base_fx_preview) if base_currency_preview == "CLP" else format_usd(valorizacion_fluxial_preview)
         st.markdown("---")
         st.markdown(
             f"""
@@ -3409,33 +3824,22 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                 <div>
                   <div class="val-summary-k">Resumen de valorización</div>
                   <div class="val-summary-t">Valorización Fluxial Hoy (Pre-money)</div>
-                  <div class="val-summary-v">{format_usd(valorizacion_fluxial_preview)}</div>
+                  <div class="val-summary-v">{valorizacion_fluxial_preview_display}</div>
                   <div class="val-summary-p">
-                    Valor pre-money estimado a partir del pre-money actual y del EBITDA potencial del ciclo inicial
-                    multiplicado por el supuesto visible en el modelo.
+                    Valor pre-money estimado segun la metodologia seleccionada para valorizacion,
+                    expresado en la moneda activa del sub-bloque.
                   </div>
                 </div>
                 <div class="val-summary-panel">
                   <div class="val-summary-panel-h">Composición del valor</div>
-                  <div class="val-summary-row">
-                    <div class="val-summary-label">Pre-money actual</div>
-                    <div class="val-summary-value">{format_usd(pre_money_preview)}</div>
-                  </div>
-                  <div class="val-summary-row">
-                    <div class="val-summary-label">EBITDA potencial multiplicado</div>
-                    <div class="val-summary-value">{format_usd(ebitda_preview)}</div>
-                  </div>
-                  <div class="val-summary-row">
-                    <div class="val-summary-label">Valorización pre-money</div>
-                    <div class="val-summary-value">{format_usd(valorizacion_fluxial_preview)}</div>
-                  </div>
+                  {composition_rows_preview}
                 </div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    elif bloque_sel == "4. Escalamiento y Expansión Comercial (Serie B)":
+    elif bloque_sel == "4. Serie B: Escalamiento Comercial":
         base_fx_preview = float(st.session_state.get(shared_state_key("fx", "base"), fx_default or 1))
         base_volume_preview = float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
         base_ebitda_unit_preview = float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
@@ -3443,14 +3847,20 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         post_ronda_pct_preview = float(st.session_state.get(shared_state_key("ronda_pct", "post"), (ronda_pct_default or 0.70) * 100.0)) / 100.0
 
         base_ebitda_preview = base_volume_preview * base_ebitda_unit_preview * post_multiple_preview
-        base_pre_money_preview = pre_money_actual_default + (
-            float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
-            * float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
-            * float(st.session_state.get(shared_state_key("multiple", "base"), multiple_default or 1))
+        valuation_basis_preview = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+        base_base_en_usd_preview = (total_base_knowhow_clp / base_fx_preview) if base_fx_preview > 0 else 0.0
+        base_pre_money_preview = resolve_fluxial_pre_money(
+            valuation_basis_preview,
+            base_base_en_usd_preview,
+            (
+                float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
+                * float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
+                * float(st.session_state.get(shared_state_key("multiple", "base"), multiple_default or 1))
+            ),
         )
         base_inv_preview = float(st.session_state.get(shared_state_key("inv_clp", "base"), inversion_clp_default)) / base_fx_preview if base_fx_preview > 0 else 0.0
         post_money_a_preview = base_pre_money_preview + base_inv_preview
-        valor_post_piloto_preview = post_money_a_preview + base_ebitda_preview
+        valor_post_piloto_preview = base_ebitda_preview
         capital_raise_preview = valor_post_piloto_preview * post_ronda_pct_preview
         post_money_b_preview = valor_post_piloto_preview + capital_raise_preview
 
@@ -3488,16 +3898,173 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             unsafe_allow_html=True,
         )
 
+    supuestos_title_map = {
+        "1. Fundamentos de Creación de Valor": "Supuestos Base de Creación de Valor",
+        "2. Serie A: Inversión Inicial y Validación": "Supuestos Económicos de Serie A",
+        "3. Valorización Post-Validación": "Supuestos de Valorización Post-Validación",
+        "4. Serie B: Escalamiento Comercial": "Supuestos de Ronda y Expansión Comercial",
+    }
+    supuestos_subtitle_map = {
+        "1. Fundamentos de Creación de Valor": "Parámetros técnicos y económicos que explican la base de creación de valor del modelo.",
+        "2. Serie A: Inversión Inicial y Validación": "Entradas de inversión y validación para estructurar la etapa inicial y la cesión asociada.",
+        "3. Valorización Post-Validación": "Variables de volumen y múltiplo para proyectar el valor del activo tras validación.",
+        "4. Serie B: Escalamiento Comercial": "Supuestos de ronda, expansión comercial y dilución para la etapa de escalamiento.",
+    }
+
+    st.markdown(
+        """
+        <style>
+        .sup-shell{
+            border-radius:24px;
+            padding:18px 20px 14px 20px;
+            border:1px solid rgba(148,163,184,.18);
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            box-shadow:0 12px 28px rgba(15,23,42,.05);
+            margin-bottom:18px;
+        }
+        .sup-head-k{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748B;
+            margin-bottom:6px;
+        }
+        .sup-head-t{
+            font-size:16px;
+            line-height:1.55;
+            color:#475569;
+            margin-top:4px;
+            margin-bottom:0;
+            max-width:980px;
+        }
+        .sup-input-shell{
+            border-radius:22px;
+            padding:16px 16px 8px 16px;
+            border:1px solid rgba(203,213,225,.72);
+            background:
+                radial-gradient(circle at top right, rgba(219,234,254,.35), transparent 24%),
+                linear-gradient(180deg,#f8fafc 0%,#ffffff 78%);
+            box-shadow:0 10px 22px rgba(15,23,42,.04);
+            margin:10px 0 18px 0;
+        }
+        .sup-input-shell-title{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748B;
+            margin-bottom:10px;
+        }
+        .sup-kpi-shell{
+            margin-top:8px;
+            margin-bottom:18px;
+        }
+        .eng-section-label{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748B;
+            margin-bottom:8px;
+        }
+        .eng-transition{
+            border-top:1px solid rgba(203,213,225,.75);
+            padding-top:16px;
+            margin-top:10px;
+            margin-bottom:18px;
+        }
+        .eng-transition-k{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748B;
+            margin-bottom:6px;
+        }
+        .eng-transition-t{
+            font-size:15px;
+            line-height:1.55;
+            color:#475569;
+            max-width:980px;
+        }
+        .sup-shell div[data-testid="stButton"] > button,
+        .sup-shell div[data-testid="stDownloadButton"] > button{
+            min-height:74px;
+            border-radius:999px;
+            padding:0 24px;
+            font-size:18px;
+            font-weight:800;
+            letter-spacing:-0.01em;
+            border:1px solid rgba(148,163,184,.18);
+            box-shadow:0 14px 28px rgba(15,23,42,.10);
+            transition:transform .18s ease, box-shadow .18s ease, filter .18s ease;
+        }
+        .sup-shell div[data-testid="stButton"] > button:hover,
+        .sup-shell div[data-testid="stDownloadButton"] > button:hover{
+            transform:translateY(-1px);
+            box-shadow:0 18px 30px rgba(15,23,42,.14);
+            filter:saturate(1.03);
+        }
+        .sup-shell div[data-testid="stButton"] > button{
+            color:#1E293B;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(255,255,255,.40), transparent 34%),
+                linear-gradient(135deg,#FFFFFF 0%,#F3F8FF 48%,#E0EDFF 100%);
+        }
+        .sup-shell div[data-testid="stButton"] > button p{
+            font-size:18px;
+            font-weight:800;
+            color:#1E293B;
+        }
+        .sup-shell div[data-testid="stDownloadButton"] > button{
+            color:#ffffff;
+            border:1px solid rgba(59,130,246,.18);
+            background:
+                radial-gradient(circle at 24% 24%, rgba(255,255,255,.28), transparent 28%),
+                linear-gradient(135deg,#2563EB 0%,#1D4ED8 40%,#0EA5E9 100%);
+        }
+        .sup-shell div[data-testid="stDownloadButton"] > button p{
+            font-size:18px;
+            font-weight:800;
+            color:#ffffff;
+        }
+        .sup-shell div[data-testid="stDownloadButton"] > button::before{
+            content:"⬇";
+            display:inline-block;
+            margin-right:10px;
+            font-size:18px;
+            font-weight:900;
+        }
+        .sup-shell div[data-testid="stButton"] > button::before{
+            content:"↺";
+            display:inline-block;
+            margin-right:10px;
+            font-size:18px;
+            font-weight:900;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.markdown("---")
-    sh_col, reset_col = st.columns([1, 0.24])
+    st.markdown('<div class="sup-shell">', unsafe_allow_html=True)
+    sh_col, reset_col, pdf_col = st.columns([1, 0.24, 0.28])
     with sh_col:
-        st.subheader("Supuestos Clave del Modelo de Valorización")
+        st.subheader(supuestos_title_map.get(bloque_sel, "Supuestos Clave del Modelo de Valorización"))
+        st.markdown(
+            f'<p class="sup-head-t">{supuestos_subtitle_map.get(bloque_sel, "")}</p>',
+            unsafe_allow_html=True,
+        )
     with reset_col:
-        if st.button("↺ Restablecer supuestos", key=widget_key("reset_supuestos"), use_container_width=True):
+        if st.button("Restablecer supuestos", key=widget_key("reset_supuestos"), use_container_width=True):
             for group_name in ("base", "post"):
                 for name, default_value in group_widget_defaults[group_name].items():
                     st.session_state[shared_state_key(name, group_name)] = default_value
                     st.session_state.pop(shared_widget_key(name, group_name), None)
+    pdf_export_slot = pdf_col.empty()
+    st.markdown('<div class="sup-input-shell"><div class="sup-input-shell-title">Panel de entrada</div>', unsafe_allow_html=True)
 
     # Seed all calculation inputs from shared state so every branch has valid values.
     fx_input = float(st.session_state[shared_state_key("fx")])
@@ -3511,45 +4078,89 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     alloc_manual_input = bool(st.session_state[shared_state_key("alloc_manual")])
     fluxial_pct_manual_input = float(st.session_state[shared_state_key("fluxial_pct_manual")]) / 100.0
     imelsa_pct_manual_input = float(st.session_state[shared_state_key("imelsa_pct_manual")]) / 100.0
+    investment_currency_input = str(st.session_state.get(shared_state_key("investment_currency"), "CLP"))
     aporte_no_pecuniario_clp = 0.0
+    aporte_no_pecuniario_usd = 0.0
 
     if bloque_sel == "1. Fundamentos de Creación de Valor":
-        pcol1, pcol2, pcol3, pcol4 = st.columns(4)
-        with pcol1:
-            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
-            render_input_thousands_hint(fx_input)
-        with pcol2:
-            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(st.session_state[shared_state_key("pre_money")]), step=50000, format="%d", key=prime_widget("pre_money"), on_change=sync_widget_to_state, args=("pre_money",))
-            render_input_thousands_hint(pre_money_input, "US$")
-        with pcol3:
-            volume_input = st.number_input("Volumen comercial", min_value=0, value=int(st.session_state[shared_state_key("volume")]), step=1, format="%d", key=prime_widget("volume"), on_change=sync_widget_to_state, args=("volume",))
-            render_input_thousands_hint(volume_input)
-        with pcol4:
-            ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(st.session_state[shared_state_key("ebitda_unit")]), step=1000, format="%d", key=prime_widget("ebitda_unit"), on_change=sync_widget_to_state, args=("ebitda_unit",))
-            render_input_thousands_hint(ebitda_unit_input, "US$")
-        with st.columns(1)[0]:
-            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
-        inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
-        captura_input = float(captura_default or 1.0)
-        ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
-    elif bloque_sel == "2. Inversión Inicial y Validación Tecnológica (Serie A)":
         pcol1, pcol2, pcol3 = st.columns(3)
         with pcol1:
             fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
             render_input_thousands_hint(fx_input)
         with pcol2:
-            pre_money_input = st.number_input("Pre-money actual (USD)", min_value=0, value=int(st.session_state[shared_state_key("pre_money")]), step=50000, format="%d", key=prime_widget("pre_money"), on_change=sync_widget_to_state, args=("pre_money",))
-            render_input_thousands_hint(pre_money_input, "US$")
+            investment_currency_input = st.selectbox(
+                "Moneda de inversión",
+                ["CLP", "USD"],
+                key=prime_widget("investment_currency"),
+                on_change=sync_investment_currency,
+            )
         with pcol3:
-            inversion_clp_input = st.number_input("Inversión piloto (CLP)", min_value=0, value=int(st.session_state[shared_state_key("inv_clp")]), step=10000000, format="%d", key=prime_widget("inv_clp"), on_change=sync_widget_to_state, args=("inv_clp",))
-            render_input_thousands_hint(inversion_clp_input, "$")
+            valuation_basis_input = st.selectbox(
+                "Base de valorización pre-money",
+                ["BASE INVERSION + KNOW-HOW", "EBITDA potencial ciclo inicial"],
+                key=prime_widget("valuation_basis"),
+                on_change=sync_widget_to_state,
+                args=("valuation_basis",),
+            )
+        if valuation_basis_input == "EBITDA potencial ciclo inicial":
+            pcol3, pcol4 = st.columns(2)
+            with pcol3:
+                volume_input = st.number_input("Volumen comercial", min_value=0, value=int(st.session_state[shared_state_key("volume")]), step=1, format="%d", key=prime_widget("volume"), on_change=sync_widget_to_state, args=("volume",))
+                render_input_thousands_hint(volume_input)
+            with pcol4:
+                ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(st.session_state[shared_state_key("ebitda_unit")]), step=1000, format="%d", key=prime_widget("ebitda_unit"), on_change=sync_widget_to_state, args=("ebitda_unit",))
+                render_input_thousands_hint(ebitda_unit_input, "US$")
+        with st.columns(1)[0]:
+            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
+        inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
+        captura_input = float(captura_default or 1.0)
+        ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
+    elif bloque_sel == "2. Serie A: Inversión Inicial y Validación":
+        pcol1, pcol2, pcol3 = st.columns(3)
+        with pcol1:
+            fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
+            render_input_thousands_hint(fx_input)
+        with pcol2:
+            investment_currency_input = st.selectbox(
+                "Moneda de inversión",
+                ["CLP", "USD"],
+                key=prime_widget("investment_currency"),
+                on_change=sync_investment_currency,
+            )
+        with pcol3:
+            if investment_currency_input == "USD":
+                inv_usd_widget_key = shared_widget_key("inv_usd_display")
+                if inv_usd_widget_key not in st.session_state:
+                    st.session_state[inv_usd_widget_key] = int(round(float(st.session_state[shared_state_key("inv_clp")]) / fx_input)) if fx_input > 0 else 0
+                inversion_usd_input = st.number_input(
+                    "Inversión piloto (USD)",
+                    min_value=0,
+                    value=int(st.session_state[inv_usd_widget_key]),
+                    step=10000,
+                    format="%d",
+                    key=inv_usd_widget_key,
+                    on_change=sync_investment_usd_to_clp,
+                )
+                render_input_thousands_hint(inversion_usd_input, "US$")
+                inversion_clp_input = float(inversion_usd_input) * fx_input
+                st.session_state[shared_state_key("inv_clp")] = int(round(inversion_clp_input))
+                st.session_state.pop(shared_widget_key("inv_clp"), None)
+            else:
+                inversion_clp_input = st.number_input("Inversión piloto (CLP)", min_value=0, value=int(st.session_state[shared_state_key("inv_clp")]), step=10000000, format="%d", key=prime_widget("inv_clp"), on_change=sync_widget_to_state, args=("inv_clp",))
+                render_input_thousands_hint(inversion_clp_input, "$")
         volume_input = float(st.session_state[shared_state_key("volume")])
         ebitda_unit_input = float(st.session_state[shared_state_key("ebitda_unit")])
         multiple_input = float(st.session_state[shared_state_key("multiple")])
         captura_input = float(captura_default or 1.0)
         ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
         auto_ebitda_potencial = volume_input * ebitda_unit_input * multiple_input
-        auto_valorizacion_fluxial = pre_money_input + auto_ebitda_potencial
+        auto_base_en_usd = (total_base_knowhow_clp / fx_input) if fx_input > 0 else 0.0
+        auto_valuation_basis = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+        auto_valorizacion_fluxial = resolve_fluxial_pre_money(
+            auto_valuation_basis,
+            auto_base_en_usd,
+            auto_ebitda_potencial,
+        )
         auto_inversion_usd = inversion_clp_input / fx_input if fx_input > 0 else 0.0
         auto_post_money = auto_valorizacion_fluxial + auto_inversion_usd
         auto_imelsa_pct = (auto_inversion_usd / auto_post_money) if auto_post_money > 0 else 0.0
@@ -3587,6 +4198,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                 st.session_state[shared_state_key("fluxial_pct_manual")] = fluxial_pct_manual_input * 100.0
                 st.session_state.pop(shared_widget_key("fluxial_pct_manual"), None)
                 aporte_no_pecuniario_usd_manual = max(0.0, (auto_post_money * imelsa_pct_manual_input) - auto_inversion_usd) if auto_post_money > 0 else 0.0
+                aporte_no_pecuniario_usd = aporte_no_pecuniario_usd_manual
                 aporte_no_pecuniario_clp = aporte_no_pecuniario_usd_manual * fx_input
             with manual_col_2:
                 st.markdown(
@@ -3628,10 +4240,10 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                             Valor complementario
                         </div>
                         <div style="font-size:34px;font-weight:800;line-height:1;color:#0f172a;margin-bottom:8px;">
-                            {format_clp(aporte_no_pecuniario_clp)}
+                            {format_clp(aporte_no_pecuniario_clp) if investment_currency_input == "CLP" else format_usd(aporte_no_pecuniario_usd)}
                         </div>
                         <div style="font-size:13px;line-height:1.45;color:#475569;">
-                            Monto adicional a la inversión piloto que debe reconocerse como aporte no pecuniario.
+                            {"Monto adicional reconocido en CLP para complementar la estructura de entrada de la Serie A." if investment_currency_input == "CLP" else "Monto adicional reconocido en USD para complementar la estructura de entrada de la Serie A."}
                         </div>
                     </div>
                     </div>
@@ -3639,7 +4251,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                     unsafe_allow_html=True,
                 )
             st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
-    elif bloque_sel == "3. Escenario de Valorización Post-Validación":
+    elif bloque_sel == "3. Valorización Post-Validación":
         pcol1, pcol2, pcol3 = st.columns(3)
         with pcol1:
             volume_input = st.number_input("Volumen comercial", min_value=0, value=int(st.session_state[shared_state_key("volume")]), step=1, format="%d", key=prime_widget("volume"), on_change=sync_widget_to_state, args=("volume",))
@@ -3649,18 +4261,33 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             render_input_thousands_hint(ebitda_unit_input, "US$")
         with pcol3:
             multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
-        with st.columns(1)[0]:
+        pcol4, pcol5 = st.columns(2)
+        with pcol4:
             fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
             render_input_thousands_hint(fx_input)
+        with pcol5:
+            investment_currency_input = st.selectbox(
+                "Moneda de inversión",
+                ["CLP", "USD"],
+                key=prime_widget("investment_currency"),
+                on_change=sync_investment_currency,
+            )
         captura_input = float(captura_default or 1.0)
         inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
         ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
     else:
-        pcol1, pcol2 = st.columns(2)
+        pcol1, pcol2, pcol3 = st.columns(3)
         with pcol1:
             fx_input = st.number_input("FX CLP/USD", min_value=1, value=int(st.session_state[shared_state_key("fx")]), step=1, format="%d", key=prime_widget("fx"), on_change=sync_widget_to_state, args=("fx",))
             render_input_thousands_hint(fx_input)
         with pcol2:
+            investment_currency_input = st.selectbox(
+                "Moneda de inversión",
+                ["CLP", "USD"],
+                key=prime_widget("investment_currency"),
+                on_change=sync_investment_currency,
+            )
+        with pcol3:
             ronda_pct_input = st.slider("Nueva cesión Serie B", min_value=5.0, max_value=90.0, value=float(st.session_state[shared_state_key("ronda_pct")]), step=1.0, format="%.0f%%", key=prime_widget("ronda_pct"), on_change=sync_widget_to_state, args=("ronda_pct",)) / 100.0
         pcol4, pcol5, pcol6 = st.columns(3)
         with pcol4:
@@ -3674,19 +4301,29 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         captura_input = float(captura_default or 1.0)
         inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
 
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
     base_en_usd = (total_base_knowhow_clp / fx_input) if fx_input > 0 else 0.0
     ebitda_potencial_ciclo_inicial = volume_input * ebitda_unit_input
     ebitda_potencial_multiplicado = ebitda_potencial_ciclo_inicial * multiple_input
-    valorizacion_fluxial_hoy = pre_money_input + ebitda_potencial_multiplicado
+    valuation_basis_input = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+    valorizacion_fluxial_hoy = resolve_fluxial_pre_money(
+        valuation_basis_input,
+        base_en_usd,
+        ebitda_potencial_multiplicado,
+    )
     inversion_usd = inversion_clp_input / fx_input if fx_input > 0 else 0.0
     post_money_serie_a = valorizacion_fluxial_hoy + inversion_usd
     imelsa_pct = (inversion_usd / post_money_serie_a) if post_money_serie_a > 0 else 0.0
     fluxial_pct = max(0.0, 1.0 - imelsa_pct)
-    if bloque_sel == "2. Inversión Inicial y Validación Tecnológica (Serie A)" and alloc_manual_input:
+    if bloque_sel == "2. Serie A: Inversión Inicial y Validación" and alloc_manual_input:
         fluxial_pct = fluxial_pct_manual_input
         imelsa_pct = imelsa_pct_manual_input
-    aporte_no_pecuniario_usd = max(0.0, (post_money_serie_a * imelsa_pct) - inversion_usd) if post_money_serie_a > 0 else 0.0
-    aporte_no_pecuniario_clp = aporte_no_pecuniario_usd * fx_input
+        aporte_no_pecuniario_usd = aporte_no_pecuniario_clp / fx_input if fx_input > 0 else 0.0
+        post_money_serie_a += aporte_no_pecuniario_usd
+    else:
+        aporte_no_pecuniario_usd = max(0.0, (post_money_serie_a * imelsa_pct) - inversion_usd) if post_money_serie_a > 0 else 0.0
+        aporte_no_pecuniario_clp = aporte_no_pecuniario_usd * fx_input
 
     # Serie B must inherit the ownership mix coming from block 2 / Serie A.
     base_fx_input = float(st.session_state.get(shared_state_key("fx", "base"), fx_default or 1))
@@ -3697,7 +4334,13 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     base_inversion_clp_input = float(st.session_state.get(shared_state_key("inv_clp", "base"), inversion_clp_default))
 
     base_ebitda_potencial = base_volume_input * base_ebitda_unit_input * base_multiple_input
-    base_valorizacion_fluxial_hoy = base_pre_money_input + base_ebitda_potencial
+    base_valuation_basis_input = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+    base_base_en_usd = (total_base_knowhow_clp / base_fx_input) if base_fx_input > 0 else 0.0
+    base_valorizacion_fluxial_hoy = resolve_fluxial_pre_money(
+        base_valuation_basis_input,
+        base_base_en_usd,
+        base_ebitda_potencial,
+    )
     base_inversion_usd = base_inversion_clp_input / base_fx_input if base_fx_input > 0 else 0.0
     base_post_money_serie_a = base_valorizacion_fluxial_hoy + base_inversion_usd
     base_imelsa_pct = (base_inversion_usd / base_post_money_serie_a) if base_post_money_serie_a > 0 else 0.0
@@ -3706,8 +4349,12 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     if base_alloc_manual:
         base_fluxial_pct = float(st.session_state.get(shared_state_key("fluxial_pct_manual", "base"), base_fluxial_pct * 100.0)) / 100.0
         base_imelsa_pct = float(st.session_state.get(shared_state_key("imelsa_pct_manual", "base"), base_imelsa_pct * 100.0)) / 100.0
+        base_aporte_no_pecuniario_usd = max(0.0, (base_post_money_serie_a * base_imelsa_pct) - base_inversion_usd) if base_post_money_serie_a > 0 else 0.0
+        base_post_money_serie_a += base_aporte_no_pecuniario_usd
+    else:
+        base_aporte_no_pecuniario_usd = max(0.0, (base_post_money_serie_a * base_imelsa_pct) - base_inversion_usd) if base_post_money_serie_a > 0 else 0.0
     ebitda_total = ebitda_potencial_ciclo_inicial
-    valor_post_piloto = base_post_money_serie_a + (ebitda_total * multiple_input)
+    valor_post_piloto = ebitda_total * multiple_input
     upside_pct = ((valor_post_piloto / base_post_money_serie_a) - 1.0) if base_post_money_serie_a > 0 else 0.0
     valor_imelsa_post = valor_post_piloto * base_imelsa_pct
     capital_raise = valor_post_piloto * ronda_pct_input
@@ -3724,19 +4371,163 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     imelsa_post_b = pct_remanente * imelsa_share_base
     valor_fluxial_post_b = post_money_serie_b * fluxial_post_b
     valor_imelsa_post_b = post_money_serie_b * imelsa_post_b
+    base_post_money_serie_a_clp = base_post_money_serie_a * fx_input
+    ebitda_total_clp = ebitda_total * fx_input
+    valor_post_piloto_clp = valor_post_piloto * fx_input
+    valor_imelsa_post_clp = valor_imelsa_post * fx_input
+    capital_raise_clp = capital_raise * fx_input
+    post_money_serie_b_clp = post_money_serie_b * fx_input
+    valor_fluxial_post_b_clp = valor_fluxial_post_b * fx_input
+    valor_imelsa_post_b_clp = valor_imelsa_post_b * fx_input
+
+    def build_valorizacion_supuestos_pdf() -> bytes:
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=1.2 * cm,
+            leftMargin=1.2 * cm,
+            topMargin=1.2 * cm,
+            bottomMargin=1.2 * cm,
+        )
+        styles = getSampleStyleSheet()
+        h1 = styles["Heading1"]
+        h2 = styles["Heading2"]
+        body = styles["BodyText"]
+        body.fontSize = 9
+        body.leading = 12
+        elements = []
+
+        investment_currency_label = "CLP" if investment_currency_input == "CLP" else "USD"
+        valuation_basis_label_pdf = "BASE INVERSION + KNOW-HOW" if valuation_basis_input == "BASE INVERSION + KNOW-HOW" else "EBITDA potencial ciclo inicial"
+        post_multiple_assumption = float(st.session_state.get(shared_state_key("multiple", "post"), multiple_post_default))
+        post_ronda_assumption = float(st.session_state.get(shared_state_key("ronda_pct", "post"), (ronda_pct_default or 0.70) * 100.0)) / 100.0
+        post_money_serie_a_clp_pdf = post_money_serie_a * fx_input
+        valor_post_piloto_clp = valor_post_piloto * fx_input
+        capital_raise_clp = capital_raise * fx_input
+        post_money_serie_b_clp = post_money_serie_b * fx_input
+
+        def add_table(title: str, rows: list[list[str]], col_widths: list[float]):
+            elements.append(Paragraph(title, h2))
+            table = Table(rows, colWidths=col_widths, repeatRows=1)
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF3FF")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("LEADING", (0, 0), (-1, -1), 10),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("ALIGN", (1, 1), (-1, -1), "LEFT"),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FBFF")]),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ]
+                )
+            )
+            elements.append(table)
+            elements.append(Spacer(1, 0.35 * cm))
+
+        elements.append(Paragraph("Supuestos y KPI Clave - Modelo de Valorización", h1))
+        elements.append(Paragraph("Resumen técnico de ingeniería financiera con los supuestos activos y los KPI principales por sub-bloque.", body))
+        elements.append(Spacer(1, 0.35 * cm))
+
+        assumptions_rows = [
+            ["Parámetro", "Valor", "Observación"],
+            ["FX CLP/USD", f"{fx_input:,.0f}".replace(",", "."), "Tipo de cambio activo del modelo"],
+            ["Base de valorización pre-money", valuation_basis_label_pdf, "Mecanismo activo para valor pre-money"],
+            ["Moneda de inversión Serie A", investment_currency_label, "Moneda visible del bloque 2"],
+            ["Inversión piloto (CLP)", format_clp(inversion_clp_input), "Capital base de entrada al piloto"],
+            ["Inversión piloto (USD)", format_usd(inversion_usd), "Conversión del capital de entrada usando FX"],
+            ["Volumen comercial", f"{volume_input:,.0f}".replace(",", "."), "Supuesto operativo del escenario"],
+            ["EBITDA unitario", format_usd(ebitda_unit_input), "Margen operativo unitario"],
+            ["Múltiplo EBITDA base", f"{multiple_input:.2f}x", "Supuesto usado en bloques 1 a 3"],
+            ["Múltiplo EBITDA Serie B", f"{post_multiple_assumption:.2f}x", "Supuesto heredado para escalamiento"],
+            ["Nueva cesión Serie B", f"{post_ronda_assumption:.1%}", "Participación objetivo para nuevos inversionistas"],
+            ["Asignación manual Serie A", "Sí" if alloc_manual_input else "No", "Activa el complemento de valor para IMELSA"],
+        ]
+        if alloc_manual_input:
+            assumptions_rows.extend(
+                [
+                    ["% IMELSA manual", f"{imelsa_pct_manual_input:.1%}", "Participación fijada manualmente"],
+                    ["% Fluxial manual", f"{fluxial_pct_manual_input:.1%}", "Complemento automático de participación"],
+                    ["Valor complementario (USD)", format_usd(aporte_no_pecuniario_usd), "Aporte adicional reconocido en la Serie A"],
+                ]
+            )
+        add_table("Supuestos acordados", assumptions_rows, [5.6 * cm, 4.0 * cm, 7.2 * cm])
+
+        bloque1_rows = [["KPI", "Valor", "Lectura"]]
+        if valuation_basis_input == "BASE INVERSION + KNOW-HOW":
+            bloque1_rows.extend(
+                [
+                    ["Base inversión + know-how", format_clp(total_base_knowhow_clp), "Base patrimonial en CLP"],
+                    ["Base inversión + know-how USD", format_usd(base_en_usd), "Base patrimonial convertida a USD"],
+                ]
+            )
+        else:
+            bloque1_rows.extend(
+                [
+                    ["Múltiplo EBITDA", f"{multiple_input:.2f}x", "Supuesto activo de múltiplo"],
+                    ["EBITDA potencial ciclo inicial", format_usd(ebitda_potencial_multiplicado), "EBITDA potencial multiplicado"],
+                ]
+            )
+        bloque1_rows.append(["Valorización Fluxial Hoy (Pre-money)", format_usd(valorizacion_fluxial_hoy), "Resultado del bloque 1"])
+        add_table("Sub-bloque 1 - Fundamentos de Creación de Valor", bloque1_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
+
+        bloque2_rows = [
+            ["KPI", "Valor", "Lectura"],
+            ["Inversión piloto (CLP)", format_clp(inversion_clp_input), "Capital comprometido en pesos"],
+            ["Inversión piloto (USD)", format_usd(inversion_usd), "Capital comprometido convertido a USD"],
+            ["Post-money Serie A (CLP)", format_clp(post_money_serie_a_clp_pdf), "Post-money expresado en CLP"],
+            ["Post-money Serie A (USD)", format_usd(post_money_serie_a), "Post-money expresado en USD"],
+            ["% IMELSA", f"{imelsa_pct:.1%}", "Participación post ingreso"],
+            ["% Fluxial", f"{fluxial_pct:.1%}", "Participación remanente"],
+        ]
+        if alloc_manual_input:
+            bloque2_rows.append(["Valor complementario (USD)", format_usd(aporte_no_pecuniario_usd), "Aporte adicional incorporado al post-money"])
+        add_table("Sub-bloque 2 - Serie A: Inversión Inicial y Validación", bloque2_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
+
+        bloque3_rows = [
+            ["KPI", "Valor", "Lectura"],
+            ["Pre Money actual (USD)", format_usd(base_post_money_serie_a), "Base heredada desde Serie A"],
+            ["EBITDA total", format_usd(ebitda_total), "EBITDA unitario multiplicado por volumen"],
+            ["Valorización post piloto (USD)", format_usd(valor_post_piloto), "EBITDA total multiplicado por el múltiplo activo"],
+            ["Valorización post piloto (CLP)", format_clp(valor_post_piloto_clp), "Referencia equivalente en CLP"],
+            ["Upside vs actual", f"{upside_pct:.1%}", "Crecimiento de valorización post piloto respecto de Pre Money actual"],
+            ["Valor por 50% post piloto", format_usd(valor_imelsa_post), "Valor implícito de una participación equivalente al 50% post piloto"],
+        ]
+        add_table("Sub-bloque 3 - Valorización Post-Validación", bloque3_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
+
+        bloque4_rows = [
+            ["KPI", "Valor", "Lectura"],
+            ["Valorización base Serie B", format_usd(valor_post_piloto), "Pre-money sugerido para la segunda ronda"],
+            ["Capital Serie B (USD)", format_usd(capital_raise), "Capital implícito a levantar"],
+            ["Capital Serie B (CLP)", format_clp(capital_raise_clp), "Referencia equivalente en CLP"],
+            ["Post-money Serie B (USD)", format_usd(post_money_serie_b), "Valorización posterior al cierre"],
+            ["Post-money Serie B (CLP)", format_clp(post_money_serie_b_clp), "Referencia equivalente en CLP"],
+            ["% remanente socios actuales", f"{pct_remanente:.1%}", "Participación conjunta post ronda"],
+            ["% Fluxial post ronda", f"{fluxial_post_b:.1%}", "Participación final de Fluxial"],
+            ["% IMELSA post ronda", f"{imelsa_post_b:.1%}", "Participación final de IMELSA"],
+        ]
+        add_table("Sub-bloque 4 - Serie B: Escalamiento Comercial", bloque4_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
+
+        doc.build(elements)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+        return pdf_bytes
 
     if bloque_sel == "1. Fundamentos de Creación de Valor":
-        mk1, mk2, mk3 = st.columns(3)
-        with mk1:
-            kpi_card("Base inversión + know-how", format_clp(total_base_knowhow_clp), "Valor base leído desde la hoja de valorización.")
-        with mk2:
-            kpi_card("Base en USD", format_usd(base_en_usd), "Total base inversión + know-how dividido por FX.")
-        with mk3:
-            kpi_card(
-                "EBITDA potencial ciclo inicial",
-                format_usd(ebitda_potencial_multiplicado),
-                "Volumen comercial multiplicado por EBITDA unitario y por el múltiplo visible.",
-            )
+        st.markdown(
+            """
+            <div class="eng-transition">
+              <div class="eng-transition-k">Capa de análisis financiero</div>
+              <div class="eng-transition-t">A continuación se despliega la proyección integrada del modelo, sus drivers unitarios y la lectura consolidada de desempeño económico.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         if eerrv2_error:
             st.error(f"No se pudo cargar EERRv2: {eerrv2_error}")
@@ -3831,9 +4622,11 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
 
             col_eerr_1, col_eerr_2 = st.columns([1.7, 1])
             with col_eerr_1:
+                st.markdown('<div class="eng-section-label">Lectura financiera integrada</div>', unsafe_allow_html=True)
                 st.markdown('#### Proyección Financiera Integrada " Etapa comercial"')
                 st.dataframe(eerr_styler, hide_index=True, use_container_width=True, height=360)
             with col_eerr_2:
+                st.markdown('<div class="eng-section-label">Drivers técnicos del modelo</div>', unsafe_allow_html=True)
                 st.markdown("#### Drivers unitarios del modelo")
                 drv_row_1 = st.columns(2)
                 with drv_row_1[0]:
@@ -3848,6 +4641,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
 
             st.markdown("#### Flujo de Caja del Proyecto y Estrategia de Reinversión")
             st.dataframe(style_engineering_table(cash_data), hide_index=True, use_container_width=True, height=420)
+            st.markdown('<div class="eng-section-label">Desempeño consolidado</div>', unsafe_allow_html=True)
             st.markdown("### Desempeño Financiero y Operativo del Proyecto")
             mini_cards = [
                 ("Ingresos promedio", kpi_map.get("Ingresos promedio (USD)", "-"), "Promedio anual del escenario EERR."),
@@ -3876,25 +4670,126 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             fig_eerr.update_layout(title="Trayectoria operativa del modelo EERRv2", barmode="group", height=420, margin=dict(l=10, r=10, t=60, b=10), plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), yaxis=dict(title="Ingresos / EBITDA (MM USD)", showgrid=True, gridcolor="rgba(148,163,184,0.22)", zeroline=False), yaxis2=dict(title="Caja neta (MM USD)", overlaying="y", side="right", showgrid=False, zeroline=False))
             st.plotly_chart(fig_eerr, use_container_width=True)
 
-    elif bloque_sel == "2. Inversión Inicial y Validación Tecnológica (Serie A)":
-        metric_cols = st.columns(4)
-        mk1, mk2, mk3, mk4 = metric_cols
-        with mk1:
-            kpi_card("Inv. convertida a USD", format_usd(inversion_usd), "Capital de entrada del piloto convertido con el FX editable.")
-        with mk2:
-            kpi_card("Post-money Serie A", format_usd(post_money_serie_a), "Valorización posterior al ingreso para construir el piloto.")
+    elif bloque_sel == "2. Serie A: Inversión Inicial y Validación":
+        selected_basis_label = "BASE INVERSION + KNOW-HOW" if valuation_basis_input == "BASE INVERSION + KNOW-HOW" else "EBITDA potencial ciclo inicial"
+        post_money_serie_a_clp = post_money_serie_a * fx_input
+        if investment_currency_input == "CLP":
+            metric_cols = st.columns(3)
+            mk2, mk3, mk4 = metric_cols
+            with mk2:
+                kpi_card("Post-money Serie A", format_clp(post_money_serie_a_clp), "Valorización posterior al ingreso para construir el piloto.")
+        else:
+            metric_cols = st.columns(4)
+            mk1, mk2, mk3, mk4 = metric_cols
+            with mk1:
+                kpi_card("Inv. convertida a USD", format_usd(inversion_usd), "Capital de entrada del piloto convertido con el FX editable.")
+            with mk2:
+                kpi_card("Post-money Serie A", format_usd(post_money_serie_a), "Valorización posterior al ingreso para construir el piloto.")
         with mk3:
             kpi_card("% IMELSA", f"{imelsa_pct:.1%}", "Participación posterior al ingreso de capital.")
         with mk4:
             kpi_card("% Fluxial", f"{fluxial_pct:.1%}", "Participación remanente posterior al piloto.")
-        st.markdown("#### Sensibilidad de entrada Serie A")
-        serie_a = pd.DataFrame([
-            {"Métrica": "Pre-money actual", "Valor": format_usd(pre_money_input)},
-            {"Métrica": "Inversión piloto (USD)", "Valor": format_usd(inversion_usd)},
-            {"Métrica": "Post-money", "Valor": format_usd(post_money_serie_a)},
-            {"Métrica": "% IMELSA", "Valor": f"{imelsa_pct:.1%}"},
-            {"Métrica": "% Fluxial", "Valor": f"{fluxial_pct:.1%}"},
-        ])
+        st.markdown(
+            """
+            <style>
+            .seriea-panel{
+                border-radius:22px;
+                padding:16px 18px 14px 18px;
+                border:1px solid rgba(148,163,184,.20);
+                background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+                box-shadow:0 10px 24px rgba(15,23,42,.05);
+                height:100%;
+            }
+            .seriea-panel-k{
+                font-size:11px;
+                font-weight:800;
+                letter-spacing:.12em;
+                text-transform:uppercase;
+                color:#64748B;
+                margin-bottom:8px;
+            }
+            .seriea-panel-t{
+                font-size:16px;
+                font-weight:800;
+                color:#0f172a;
+                line-height:1.3;
+                margin-bottom:10px;
+            }
+            .seriea-panel-s{
+                font-size:13px;
+                line-height:1.5;
+                color:#475569;
+            }
+            .seriea-shell{
+                border-radius:24px;
+                padding:18px 18px 14px 18px;
+                border:1px solid rgba(148,163,184,.18);
+                background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+                box-shadow:0 12px 26px rgba(15,23,42,.05);
+                min-height:100%;
+            }
+            .seriea-shell-k{
+                font-size:11px;
+                font-weight:800;
+                letter-spacing:.12em;
+                text-transform:uppercase;
+                color:#64748B;
+                margin-bottom:8px;
+            }
+            .seriea-shell-t{
+                font-size:22px;
+                font-weight:800;
+                color:#0f172a;
+                line-height:1.15;
+                margin-bottom:8px;
+            }
+            .seriea-shell-s{
+                font-size:13px;
+                line-height:1.55;
+                color:#475569;
+                margin-bottom:12px;
+            }
+            .seriea-mini-band{
+                display:flex;
+                gap:10px;
+                flex-wrap:wrap;
+                margin:10px 0 14px 0;
+            }
+            .seriea-mini-chip{
+                border-radius:999px;
+                padding:8px 12px;
+                border:1px solid rgba(29,78,216,.12);
+                background:#F8FBFF;
+                font-size:12px;
+                color:#334155;
+            }
+            .seriea-foot{
+                border-top:1px solid rgba(148,163,184,.16);
+                padding-top:10px;
+                margin-top:10px;
+                font-size:12px;
+                color:#64748B;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        if investment_currency_input == "CLP":
+            serie_a = pd.DataFrame([
+                {"Métrica": f"Valorización base ({selected_basis_label})", "Valor": format_clp(valorizacion_fluxial_hoy * fx_input)},
+                {"Métrica": "Inversión piloto (CLP)", "Valor": format_clp(inversion_clp_input)},
+                {"Métrica": "Post-money", "Valor": format_clp(post_money_serie_a_clp)},
+                {"Métrica": "% IMELSA", "Valor": f"{imelsa_pct:.1%}"},
+                {"Métrica": "% Fluxial", "Valor": f"{fluxial_pct:.1%}"},
+            ])
+        else:
+            serie_a = pd.DataFrame([
+                {"Métrica": f"Valorización base ({selected_basis_label})", "Valor": format_usd(valorizacion_fluxial_hoy)},
+                {"Métrica": "Inversión piloto (USD)", "Valor": format_usd(inversion_usd)},
+                {"Métrica": "Post-money", "Valor": format_usd(post_money_serie_a)},
+                {"Métrica": "% IMELSA", "Valor": f"{imelsa_pct:.1%}"},
+                {"Métrica": "% Fluxial", "Valor": f"{fluxial_pct:.1%}"},
+            ])
         if alloc_manual_input:
             serie_a = pd.concat(
                 [
@@ -3902,81 +4797,321 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                     pd.DataFrame(
                         [
                             {
-                                "Métrica": "Aporte no pecuniario (CLP)",
-                                "Valor": format_clp(aporte_no_pecuniario_clp),
+                                "Métrica": "Valor complementario (CLP)" if investment_currency_input == "CLP" else "Valor complementario (USD)",
+                                "Valor": format_clp(aporte_no_pecuniario_clp) if investment_currency_input == "CLP" else format_usd(aporte_no_pecuniario_usd),
                             }
                         ]
                     ),
                 ],
                 ignore_index=True,
             )
-        c1, c2 = st.columns([0.9, 1.1])
+        cap_table_a = pd.DataFrame({
+            "Socio": ["Fluxial Wind", "IMELSA"],
+            "Participación": [fluxial_pct, imelsa_pct],
+            "Valor implícito (USD)": [post_money_serie_a * fluxial_pct, post_money_serie_a * imelsa_pct],
+        }).sort_values("Participación", ascending=True).reset_index(drop=True)
+        cap_table_a["Participación_pct"] = cap_table_a["Participación"] * 100
+        cap_table_a["Etiqueta"] = cap_table_a.apply(
+            lambda r: f"{r['Participación']:.1%} · {format_usd(r['Valor implícito (USD)'])}",
+            axis=1,
+        )
+        c1, c2 = st.columns([0.95, 1.05])
         with c1:
-            st.dataframe(serie_a, hide_index=True, use_container_width=True)
+            st.markdown(
+                f"""
+                <div class="seriea-shell">
+                  <div class="seriea-shell-k">Lectura económica</div>
+                  <div class="seriea-shell-t">Resumen de entrada Serie A</div>
+                  <div class="seriea-shell-s">Conversión de inversión, valorización base activa, post-money y estructura societaria proyectada tras el ingreso de capital.</div>
+                  <div class="seriea-mini-band">
+                    <div class="seriea-mini-chip">Base activa: {selected_basis_label}</div>
+                    <div class="seriea-mini-chip">Post-money: {format_usd(post_money_serie_a)}</div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            st.dataframe(style_engineering_table(serie_a), hide_index=True, use_container_width=True, height=310)
+            st.markdown(
+                f"""
+                <div class="seriea-foot">
+                  La tabla resume la valorización base seleccionada, el capital invertido y la distribución accionaria resultante.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         with c2:
-            cap_table_a = pd.DataFrame({"Socio": ["Fluxial Wind", "IMELSA"], "Participación": [fluxial_pct, imelsa_pct], "Valor implícito (USD)": [post_money_serie_a * fluxial_pct, post_money_serie_a * imelsa_pct]})
-            fig_cap_a = px.bar(cap_table_a, x="Participación", y="Socio", orientation="h", text=cap_table_a["Participación"].map(lambda v: f"{v:.1%}"), color="Socio", color_discrete_map={"Fluxial Wind": "#1D4ED8", "IMELSA": "#0F766E"}, title="Cap table posterior al piloto")
-            fig_cap_a.update_traces(textposition="inside")
-            fig_cap_a.update_layout(showlegend=False, xaxis_tickformat=".0%", margin=dict(l=10, r=10, t=50, b=10), height=300)
-            st.plotly_chart(fig_cap_a, use_container_width=True)
+            fig_cap_a = px.bar(
+                cap_table_a,
+                x="Participación_pct",
+                y="Socio",
+                orientation="h",
+                text="Etiqueta",
+                color="Socio",
+                color_discrete_map={"Fluxial Wind": "#1D4ED8", "IMELSA": "#0F766E"},
+                title=None,
+            )
+            fig_cap_a.update_traces(
+                textposition="inside",
+                insidetextanchor="middle",
+                marker=dict(line=dict(color="rgba(255,255,255,0.85)", width=1.2)),
+                hovertemplate="<b>%{y}</b><br>Participación: %{customdata[0]:.1%}<br>Valor implícito: US$%{customdata[1]:,.0f}<extra></extra>",
+                customdata=np.stack([cap_table_a["Participación"], cap_table_a["Valor implícito (USD)"]], axis=-1),
+            )
+            fig_cap_a.update_layout(
+                showlegend=False,
+                xaxis_tickformat=".0f",
+                margin=dict(l=8, r=8, t=56, b=8),
+                height=330,
+                plot_bgcolor="white",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#334155", size=13),
+                title=None,
+            )
+            fig_cap_a.update_xaxes(
+                title="Participación accionaria (%)",
+                ticksuffix="%",
+                range=[0, max(100, cap_table_a["Participación_pct"].max() * 1.08)],
+                showgrid=True,
+                gridcolor="rgba(148,163,184,0.22)",
+                zeroline=False,
+            )
+            fig_cap_a.update_yaxes(title="", showgrid=False)
+            st.markdown(
+                f"""
+                <div class="seriea-shell">
+                  <div class="seriea-shell-k">Cap table proyectado</div>
+                  <div class="seriea-shell-t">Distribución posterior al piloto</div>
+                  <div class="seriea-shell-s">Lectura visual de participación y valor implícito por socio después del cierre de la Serie A.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.plotly_chart(fig_cap_a, use_container_width=True, config={"displaylogo": False, "modeBarButtonsToRemove": ["lasso2d", "select2d"]})
+            st.markdown(
+                f"""
+                <div class="seriea-foot">
+                  Fluxial retiene {fluxial_pct:.1%} e IMELSA consolida {imelsa_pct:.1%} del cap table post-piloto.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    elif bloque_sel == "3. Escenario de Valorización Post-Validación":
+    elif bloque_sel == "3. Valorización Post-Validación":
         mk1, mk2, mk3, mk4, mk5 = st.columns(5)
+        if investment_currency_input == "CLP":
+            pre_money_display = format_clp(base_post_money_serie_a_clp)
+            ebitda_total_display = format_clp(ebitda_total_clp)
+            valor_post_piloto_display = format_clp(valor_post_piloto_clp)
+            valor_imelsa_display = format_clp(valor_imelsa_post_clp)
+            sens_title = "Sensibilidad de valorización vs volumen comercial (MM CLP)"
+            sens_label = "Valorización post piloto (MM CLP)"
+            sens_tickprefix = "$"
+            sens_values = (base_post_money_serie_a_clp + (sensibilidad["Volumen"] * ebitda_unit_input * multiple_input * fx_input)) if False else None
+        else:
+            pre_money_display = format_usd(base_post_money_serie_a)
+            ebitda_total_display = format_usd(ebitda_total)
+            valor_post_piloto_display = format_usd(valor_post_piloto)
+            valor_imelsa_display = format_usd(valor_imelsa_post)
+            sens_title = "Sensibilidad de valorización vs volumen comercial"
+            sens_label = "Valorización post piloto (MM USD)"
+            sens_tickprefix = "US$"
         with mk1:
-            kpi_card("Pre Money actual (USD)", format_usd(base_post_money_serie_a), "Valor base heredado desde Post-money Serie A del bloque 2.")
+            kpi_card(f"Pre Money actual ({investment_currency_input})", pre_money_display, "Valor base heredado desde Post-money Serie A del bloque 2.")
         with mk2:
-            kpi_card("EBITDA total", format_usd(ebitda_total), "EBITDA unitario multiplicado por el volumen.")
+            kpi_card(f"EBITDA total ({investment_currency_input})", ebitda_total_display, "EBITDA unitario multiplicado por el volumen.")
         with mk3:
-            kpi_card("Valorización post piloto", format_usd(valor_post_piloto), "EBITDA × múltiplo × captura.", variant="sky")
+            kpi_card("Valorización post piloto", valor_post_piloto_display, "EBITDA total multiplicado por el múltiplo activo.", variant="sky")
         with mk4:
-            kpi_card("Upside vs actual", f"{upside_pct:.1%}", "Crecimiento relativo vs pre-money actual.")
+            kpi_card("Upside vs actual", f"{upside_pct:.1%}", "Crecimiento de valorización post piloto respecto de Pre Money actual.")
         with mk5:
-            kpi_card("Valor IMELSA post piloto", format_usd(valor_imelsa_post), "Valor implícito de su participación tras el piloto.")
+            kpi_card("Valor por 50% post piloto", valor_imelsa_display, "Valor implícito de una participación equivalente al 50% post piloto.")
         st.markdown("#### Motor económico del piloto")
         sensibilidad = pd.DataFrame({"Volumen": [max(1, volume_input * f) for f in [0.6, 0.8, 1.0, 1.2, 1.4]]})
-        sensibilidad["Valorización_post_piloto"] = base_post_money_serie_a + (sensibilidad["Volumen"] * ebitda_unit_input * multiple_input)
-        sensibilidad["Valorización_MMUSD"] = sensibilidad["Valorización_post_piloto"] / 1e6
-        sensibilidad["Etiqueta"] = sensibilidad["Valorización_MMUSD"].map(lambda v: f"US${v:.2f}M")
-        fig_sens = px.line(sensibilidad, x="Volumen", y="Valorización_MMUSD", markers=True, text="Etiqueta", title="Sensibilidad de valorización vs volumen comercial", labels={"Valorización_MMUSD": "Valorización post piloto (MM USD)", "Volumen": "Volumen comercial (turbinas)"})
-        fig_sens.update_traces(line=dict(color="#0F766E", width=4), marker=dict(size=10, color="#0F766E", line=dict(width=2, color="#ECFDF5")), textposition="top center", hovertemplate="<b>Volumen:</b> %{x:.0f} turbinas<br><b>Valorización:</b> US$%{customdata[0]:,.0f}<br><b>EBITDA total:</b> US$%{customdata[1]:,.0f}<extra></extra>", customdata=np.stack([sensibilidad["Valorización_post_piloto"], sensibilidad["Volumen"] * ebitda_unit_input], axis=-1))
+        sensibilidad["Valorización_post_piloto"] = sensibilidad["Volumen"] * ebitda_unit_input * multiple_input
+        if investment_currency_input == "CLP":
+            sensibilidad["Valorización_millones"] = (sensibilidad["Valorización_post_piloto"] * fx_input) / 1e6
+            sensibilidad["Etiqueta"] = sensibilidad["Valorización_millones"].map(lambda v: f"${v:.2f}M")
+            sens_customdata = np.stack([sensibilidad["Valorización_post_piloto"] * fx_input, sensibilidad["Volumen"] * ebitda_unit_input * fx_input], axis=-1)
+            sens_hover = "<b>Volumen:</b> %{x:.0f} turbinas<br><b>Valorización:</b> $%{customdata[0]:,.0f}<br><b>EBITDA total:</b> $%{customdata[1]:,.0f}<extra></extra>"
+            sens_base_y = valor_post_piloto_clp / 1e6
+        else:
+            sensibilidad["Valorización_millones"] = sensibilidad["Valorización_post_piloto"] / 1e6
+            sensibilidad["Etiqueta"] = sensibilidad["Valorización_millones"].map(lambda v: f"US${v:.2f}M")
+            sens_customdata = np.stack([sensibilidad["Valorización_post_piloto"], sensibilidad["Volumen"] * ebitda_unit_input], axis=-1)
+            sens_hover = "<b>Volumen:</b> %{x:.0f} turbinas<br><b>Valorización:</b> US$%{customdata[0]:,.0f}<br><b>EBITDA total:</b> US$%{customdata[1]:,.0f}<extra></extra>"
+            sens_base_y = valor_post_piloto / 1e6
+        fig_sens = px.line(sensibilidad, x="Volumen", y="Valorización_millones", markers=True, text="Etiqueta", title=sens_title, labels={"Valorización_millones": sens_label, "Volumen": "Volumen comercial (turbinas)"})
+        fig_sens.update_traces(line=dict(color="#0F766E", width=4), marker=dict(size=10, color="#0F766E", line=dict(width=2, color="#ECFDF5")), textposition="top center", hovertemplate=sens_hover, customdata=sens_customdata)
         fig_sens.add_vline(x=volume_input, line_width=1.5, line_dash="dash", line_color="#1D4ED8", opacity=0.8)
-        fig_sens.add_hline(y=valor_post_piloto / 1e6, line_width=1.5, line_dash="dot", line_color="#1D4ED8", opacity=0.8)
-        fig_sens.add_annotation(x=volume_input, y=valor_post_piloto / 1e6, text=f"Base: {volume_input:,.0f} turbinas / US${valor_post_piloto/1e6:.2f}M".replace(",", "."), showarrow=True, arrowhead=2, ax=40, ay=-40, bgcolor="rgba(255,255,255,0.95)", bordercolor="#BFDBFE", font=dict(size=11, color="#0F172A"))
+        fig_sens.add_hline(y=sens_base_y, line_width=1.5, line_dash="dot", line_color="#1D4ED8", opacity=0.8)
+        fig_sens.add_annotation(x=volume_input, y=sens_base_y, text=(f"Base: {volume_input:,.0f} turbinas / ${sens_base_y:.2f}M" if investment_currency_input == "CLP" else f"Base: {volume_input:,.0f} turbinas / US${sens_base_y:.2f}M").replace(",", "."), showarrow=True, arrowhead=2, ax=40, ay=-40, bgcolor="rgba(255,255,255,0.95)", bordercolor="#BFDBFE", font=dict(size=11, color="#0F172A"))
         fig_sens.update_layout(margin=dict(l=10, r=10, t=60, b=10), height=430, plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)", hovermode="x unified")
         fig_sens.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.22)", zeroline=False)
-        fig_sens.update_yaxes(tickprefix="US$", ticksuffix="M", showgrid=True, gridcolor="rgba(148,163,184,0.22)", zeroline=False)
+        fig_sens.update_yaxes(tickprefix=sens_tickprefix, ticksuffix="M", showgrid=True, gridcolor="rgba(148,163,184,0.22)", zeroline=False)
         st.plotly_chart(fig_sens, use_container_width=True)
 
     else:
         mk1, mk2, mk3, mk4 = st.columns(4)
+        if investment_currency_input == "CLP":
+            val_base_b_display = format_clp(valor_post_piloto_clp)
+            capital_b_display = format_clp(capital_raise_clp)
+            post_money_b_display = format_clp(post_money_serie_b_clp)
+        else:
+            val_base_b_display = format_usd(valor_post_piloto)
+            capital_b_display = format_usd(capital_raise)
+            post_money_b_display = format_usd(post_money_serie_b)
         with mk1:
-            kpi_card("Valorización base Serie B", format_usd(valor_post_piloto), "Pre-money sugerido para la segunda ronda.")
+            kpi_card("Valorización base Serie B", val_base_b_display, "Pre-money sugerido para la segunda ronda.")
         with mk2:
-            kpi_card("Capital Serie B", format_usd(capital_raise), "Capital implícito a levantar para la nueva cesión objetivo.")
+            kpi_card("Capital Serie B", capital_b_display, "Capital implícito a levantar para la nueva cesión objetivo.")
         with mk3:
-            kpi_card("Post-money Serie B", format_usd(post_money_serie_b), "Valorización posterior al cierre de la ronda.", variant="sky")
+            kpi_card("Post-money Serie B", post_money_b_display, "Valorización posterior al cierre de la ronda.", variant="sky")
         with mk4:
             kpi_card("% remanente socios actuales", f"{pct_remanente:.1%}", "Participación conjunta remanente de Fluxial + IMELSA.")
-        st.markdown("#### Estructura accionaria Serie B")
-        cap_table_b = pd.DataFrame({"Socio": ["Nuevos inversionistas", "Fluxial Wind", "IMELSA"], "Participación": [ronda_pct_input, fluxial_post_b, imelsa_post_b], "Valor económico (USD)": [post_money_serie_b * ronda_pct_input, valor_fluxial_post_b, valor_imelsa_post_b]}).sort_values("Participación", ascending=True).reset_index(drop=True)
+        st.markdown(
+            """
+            <style>
+            .serieb-shell{
+                border-radius:24px;
+                padding:18px 18px 14px 18px;
+                border:1px solid rgba(148,163,184,.18);
+                background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+                box-shadow:0 12px 26px rgba(15,23,42,.05);
+                min-height:100%;
+            }
+            .serieb-shell-k{
+                font-size:11px;
+                font-weight:800;
+                letter-spacing:.12em;
+                text-transform:uppercase;
+                color:#64748B;
+                margin-bottom:8px;
+            }
+            .serieb-shell-t{
+                font-size:22px;
+                font-weight:800;
+                color:#0f172a;
+                line-height:1.15;
+                margin-bottom:8px;
+            }
+            .serieb-shell-s{
+                font-size:13px;
+                line-height:1.55;
+                color:#475569;
+                margin-bottom:12px;
+            }
+            .serieb-mini-band{
+                display:flex;
+                gap:10px;
+                flex-wrap:wrap;
+                margin:10px 0 14px 0;
+            }
+            .serieb-mini-chip{
+                border-radius:999px;
+                padding:8px 12px;
+                border:1px solid rgba(15,118,110,.12);
+                background:#F8FBFF;
+                font-size:12px;
+                color:#334155;
+            }
+            .serieb-foot{
+                border-top:1px solid rgba(148,163,184,.16);
+                padding-top:10px;
+                margin-top:10px;
+                font-size:12px;
+                color:#64748B;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        cap_table_b = pd.DataFrame({"Socio": ["Nuevos inversionistas", "Fluxial Wind", "IMELSA"], "Participación": [ronda_pct_input, fluxial_post_b, imelsa_post_b], "Valor económico": [post_money_serie_b * ronda_pct_input, valor_fluxial_post_b, valor_imelsa_post_b]}).sort_values("Participación", ascending=True).reset_index(drop=True)
+        if investment_currency_input == "CLP":
+            cap_table_b["Valor económico"] = cap_table_b["Valor económico"] * fx_input
         cap_table_b["Participación_pct"] = cap_table_b["Participación"] * 100
-        cap_table_b["Etiqueta"] = cap_table_b.apply(lambda r: f"{r['Participación']:.1%}  ·  {format_usd(r['Valor económico (USD)'])}", axis=1)
-        fig_cap_b = px.bar(cap_table_b, x="Participación_pct", y="Socio", orientation="h", text="Etiqueta", color="Socio", color_discrete_map={"Nuevos inversionistas": "#C58940", "Fluxial Wind": "#1D4ED8", "IMELSA": "#0F766E"}, title="Cap table proyectada tras Serie B")
-        fig_cap_b.update_traces(textposition="inside", insidetextanchor="middle", marker=dict(line=dict(color="rgba(255,255,255,0.85)", width=1.2)), hovertemplate="<b>%{y}</b><br>Participación: %{customdata[0]:.1%}<br>Valor económico: US$%{customdata[1]:,.0f}<extra></extra>", customdata=np.stack([cap_table_b["Participación"], cap_table_b["Valor económico (USD)"]], axis=-1))
-        fig_cap_b.update_layout(showlegend=False, margin=dict(l=10, r=10, t=60, b=20), height=360, bargap=0.22, plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#334155", size=13), title=dict(font=dict(size=22, color="#0f172a"), x=0.02))
+        cap_table_b["Etiqueta"] = cap_table_b.apply(lambda r: f"{r['Participación']:.1%}  ·  {(format_clp(r['Valor económico']) if investment_currency_input == 'CLP' else format_usd(r['Valor económico']))}", axis=1)
+        fig_cap_b = px.bar(cap_table_b, x="Participación_pct", y="Socio", orientation="h", text="Etiqueta", color="Socio", color_discrete_map={"Nuevos inversionistas": "#C58940", "Fluxial Wind": "#1D4ED8", "IMELSA": "#0F766E"}, title=None)
+        fig_cap_b.update_traces(textposition="inside", insidetextanchor="middle", marker=dict(line=dict(color="rgba(255,255,255,0.85)", width=1.2)), hovertemplate=("<b>%{y}</b><br>Participación: %{customdata[0]:.1%}<br>Valor económico: $%{customdata[1]:,.0f}<extra></extra>" if investment_currency_input == "CLP" else "<b>%{y}</b><br>Participación: %{customdata[0]:.1%}<br>Valor económico: US$%{customdata[1]:,.0f}<extra></extra>"), customdata=np.stack([cap_table_b["Participación"], cap_table_b["Valor económico"]], axis=-1))
+        fig_cap_b.update_layout(showlegend=False, margin=dict(l=8, r=8, t=18, b=16), height=360, bargap=0.22, plot_bgcolor="white", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#334155", size=13), title=None)
         fig_cap_b.update_xaxes(title="Participación accionaria (%)", ticksuffix="%", range=[0, max(100, cap_table_b["Participación_pct"].max() * 1.08)], showgrid=True, gridcolor="rgba(148,163,184,0.22)", zeroline=False)
         fig_cap_b.update_yaxes(title="", showgrid=False)
-        st.plotly_chart(fig_cap_b, use_container_width=True)
-        serie_b_rows = pd.DataFrame([
-            {"Métrica": "Pre-money Serie B", "Valor": format_usd(valor_post_piloto)},
-            {"Métrica": "Capital a levantar", "Valor": format_usd(capital_raise)},
-            {"Métrica": "Post-money Serie B", "Valor": format_usd(post_money_serie_b)},
-            {"Métrica": "% Fluxial post ronda", "Valor": f"{fluxial_post_b:.1%}"},
-            {"Métrica": "% IMELSA post ronda", "Valor": f"{imelsa_post_b:.1%}"},
-        ])
-        st.dataframe(serie_b_rows, hide_index=True, use_container_width=True)
+        if investment_currency_input == "CLP":
+            serie_b_rows = pd.DataFrame([
+                {"Métrica": "Pre-money Serie B (CLP)", "Valor": format_clp(valor_post_piloto_clp)},
+                {"Métrica": "Capital a levantar (CLP)", "Valor": format_clp(capital_raise_clp)},
+                {"Métrica": "Post-money Serie B (CLP)", "Valor": format_clp(post_money_serie_b_clp)},
+                {"Métrica": "% Fluxial post ronda", "Valor": f"{fluxial_post_b:.1%}"},
+                {"Métrica": "% IMELSA post ronda", "Valor": f"{imelsa_post_b:.1%}"},
+            ])
+        else:
+            serie_b_rows = pd.DataFrame([
+                {"Métrica": "Pre-money Serie B (USD)", "Valor": format_usd(valor_post_piloto)},
+                {"Métrica": "Capital a levantar (USD)", "Valor": format_usd(capital_raise)},
+                {"Métrica": "Post-money Serie B (USD)", "Valor": format_usd(post_money_serie_b)},
+                {"Métrica": "% Fluxial post ronda", "Valor": f"{fluxial_post_b:.1%}"},
+                {"Métrica": "% IMELSA post ronda", "Valor": f"{imelsa_post_b:.1%}"},
+            ])
+        c1, c2 = st.columns([0.95, 1.05])
+        with c1:
+            st.markdown(
+                f"""
+                <div class="serieb-shell">
+                  <div class="serieb-shell-k">Lectura de ronda</div>
+                  <div class="serieb-shell-t">Resumen económico Serie B</div>
+                  <div class="serieb-shell-s">La tabla consolida pre-money, capital nuevo, post-money y la estructura accionaria remanente tras la expansión comercial.</div>
+                  <div class="serieb-mini-band">
+                    <div class="serieb-mini-chip">Moneda visible: {investment_currency_input}</div>
+                    <div class="serieb-mini-chip">Nueva cesión: {ronda_pct_input:.1%}</div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            st.dataframe(style_engineering_table(serie_b_rows), hide_index=True, use_container_width=True, height=310)
+            st.markdown(
+                """
+                <div class="serieb-foot">
+                  La tabla resume la valorización base de la ronda, el capital nuevo comprometido y la distribución accionaria posterior al cierre.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with c2:
+            st.markdown(
+                """
+                <div class="serieb-shell">
+                  <div class="serieb-shell-k">Cap table proyectado</div>
+                  <div class="serieb-shell-t">Distribución posterior a Serie B</div>
+                  <div class="serieb-shell-s">Lectura visual de participación y valor económico por socio después de la nueva cesión para escalamiento.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.plotly_chart(fig_cap_b, use_container_width=True, config={"displaylogo": False, "modeBarButtonsToRemove": ["lasso2d", "select2d"]})
+            st.markdown(
+                f"""
+                <div class="serieb-foot">
+                  Nuevos inversionistas concentran {ronda_pct_input:.1%}, mientras Fluxial e IMELSA retienen {fluxial_post_b:.1%} y {imelsa_post_b:.1%} respectivamente.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     csv_valorizacion = df_valorizacion.to_csv(index=False).encode("utf-8-sig")
+    if REPORTLAB_AVAILABLE:
+        pdf_export_slot.download_button(
+            label="Descargar PDF de supuestos",
+            data=build_valorizacion_supuestos_pdf(),
+            file_name="Supuestos_Modelo_Valorizacion.pdf",
+            mime="application/pdf",
+            key=widget_key("download_supuestos_pdf"),
+            use_container_width=True,
+        )
+    else:
+        pdf_export_slot.info("PDF deshabilitado: falta `reportlab`.", icon="ℹ️")
     st.download_button(label="📥 Descargar CSV de valorización", data=csv_valorizacion, file_name="valorizacion.csv", mime="text/csv", key=widget_key("download_csv"))
 
 
@@ -4101,9 +5236,9 @@ def render_input_thousands_hint(value: float | int, prefix: str = ""):
 # NAVEGACIÓN PRINCIPAL
 # =========================
 input_cards = [
-    ("estado_actual", "1- Desarrollo y Consolidación del Activo Tecnológico"),
-    ("escalamiento", "2-Estrategia de Inversión y Ejecución de CAPEX"),
-    ("valorizacion", "3-Modelo de Valorización y Retorno"),
+    ("estado_actual", "1- Activo Tecnológico y Validación"),
+    ("escalamiento", "2- Capital Requerido y Ejecución CAPEX"),
+    ("valorizacion", "3-Modelo de Valorización y Estructura de Inversión"),
 ]
 
 if "inputs_bloque_sel" not in st.session_state:
@@ -4121,22 +5256,69 @@ def _set_inputs_bloque(value: str):
 st.markdown(
         """
         <style>
+        .inputs-nav-shell{
+            border-radius:24px;
+            padding:16px 18px 12px 18px;
+            border:1px solid rgba(148,163,184,.18);
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            box-shadow:0 12px 28px rgba(15,23,42,.05);
+            margin-bottom:18px;
+        }
+        .inputs-nav-head-k{
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748B;
+            margin-bottom:6px;
+        }
+        .inputs-nav-head-t{
+            font-size:18px;
+            font-weight:900;
+            line-height:1.15;
+            color:#0f172a;
+            margin-bottom:6px;
+        }
+        .inputs-nav-head-s{
+            font-size:13px;
+            line-height:1.5;
+            color:#475569;
+            max-width:760px;
+        }
         .inputs-nav-card{
-            height:136px;
+            min-height:118px;
             display:flex;
             flex-direction:column;
-            justify-content:space-between;
+            justify-content:flex-start;
+            position:relative;
+            overflow:hidden;
             border-radius:20px;
-            padding:18px 18px 16px 18px;
-            border:1px solid rgba(148,163,184,.28);
-            background:linear-gradient(180deg,#f8fafc 0%,#ffffff 72%);
-            box-shadow:0 8px 18px rgba(15,23,42,.05);
-            margin-bottom:12px;
+            padding:16px 18px 14px 18px;
+            border:1px solid rgba(203,213,225,.75);
+            background:
+                radial-gradient(circle at top right, rgba(191,219,254,.28), transparent 28%),
+                linear-gradient(180deg,#f8fafc 0%,#ffffff 74%);
+            box-shadow:0 10px 22px rgba(15,23,42,.04);
+            margin-bottom:10px;
+        }
+        .inputs-nav-card:before{
+            content:"";
+            position:absolute;
+            left:0;
+            top:0;
+            bottom:0;
+            width:5px;
+            background:linear-gradient(180deg,#cbd5e1 0%,#e2e8f0 100%);
         }
         .inputs-nav-card.active{
-            border:1px solid rgba(22,163,74,.30);
-            box-shadow:0 14px 28px rgba(21,128,61,.12);
-            background:linear-gradient(90deg,#ecfdf5 0%,#d1fae5 42%,#a7f3d0 100%);
+            border:1px solid rgba(16,185,129,.30);
+            box-shadow:0 16px 34px rgba(16,185,129,.14);
+            background:
+                radial-gradient(circle at top right, rgba(52,211,153,.20), transparent 26%),
+                linear-gradient(90deg,#ecfdf5 0%,#d1fae5 48%,#a7f3d0 100%);
+        }
+        .inputs-nav-card.active:before{
+            background:linear-gradient(180deg,#059669 0%,#34d399 100%);
         }
         .inputs-nav-k{
             font-size:11px;
@@ -4144,23 +5326,59 @@ st.markdown(
             letter-spacing:.10em;
             text-transform:uppercase;
             color:#64748B;
-            margin-bottom:8px;
-        }
-        .inputs-nav-t{
-            font-size:20px;
-            font-weight:800;
-            line-height:1.18;
-            color:#0f172a;
             margin-bottom:10px;
         }
+        .inputs-nav-t{
+            font-size:17px;
+            font-weight:900;
+            line-height:1.2;
+            color:#0f172a;
+            margin-bottom:8px;
+            max-width:28ch;
+        }
+        .inputs-nav-title-row{
+            display:flex;
+            align-items:flex-start;
+            gap:10px;
+            margin-bottom:8px;
+        }
+        .inputs-nav-ico{
+            font-size:22px;
+            line-height:1;
+            flex:0 0 auto;
+            margin-top:1px;
+        }
+        .inputs-nav-title-wrap{
+            min-width:0;
+        }
         .inputs-nav-s{
-            font-size:13px;
+            font-size:12px;
             line-height:1.45;
             color:#475569;
         }
         .inputs-nav-card.active .inputs-nav-k{color:#166534;}
         .inputs-nav-card.active .inputs-nav-t{color:#064e3b;}
         .inputs-nav-card.active .inputs-nav-s{color:#065f46;}
+        .inputs-active-banner{
+            border-radius:18px;
+            padding:12px 14px;
+            border:1px solid rgba(59,130,246,.16);
+            background:linear-gradient(90deg,#eff6ff 0%,#eefbf5 100%);
+            margin:8px 0 4px 0;
+        }
+        .inputs-active-banner-k{
+            font-size:10px;
+            font-weight:800;
+            letter-spacing:.12em;
+            text-transform:uppercase;
+            color:#64748b;
+            margin-bottom:4px;
+        }
+        .inputs-active-banner-t{
+            font-size:14px;
+            font-weight:800;
+            color:#0f172a;
+        }
         .inputs-info-box{
             border-radius:20px;
             padding:22px 24px;
@@ -4194,6 +5412,17 @@ st.markdown(
         unsafe_allow_html=True,
 )
 
+st.markdown(
+    """
+    <div class="inputs-nav-shell">
+      <div class="inputs-nav-head-k">Mapa de lectura</div>
+      <div class="inputs-nav-head-t">Selecciona el bloque estratégico que quieres revisar</div>
+      <div class="inputs-nav-head-s">La pantalla está organizada en tres vistas: activo tecnológico, capital requerido y estructura de valorización.</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 nav_cols = st.columns(3)
 for idx, (block_value, block_title) in enumerate(input_cards):
     is_active = st.session_state.get("inputs_bloque_sel") == block_value
@@ -4201,9 +5430,9 @@ for idx, (block_value, block_title) in enumerate(input_cards):
         st.markdown(
             f"""
             <div class="inputs-nav-card {'active' if is_active else ''}">
-                <div class="inputs-nav-k">KPI {idx + 1}</div>
+                <div class="inputs-nav-k">BLOQUE {idx + 1}</div>
                 <div class="inputs-nav-t">{block_title}</div>
-                <div class="inputs-nav-s">{'Seleccionado para edición posterior' if is_active else 'Haz clic para abrir este bloque de información'}</div>
+                <div class="inputs-nav-s">{'Vista activa para análisis' if is_active else 'Abrir vista estratégica'}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -4220,17 +5449,31 @@ for idx, (block_value, block_title) in enumerate(input_cards):
 st.markdown("---")
 selected_input_block = st.session_state.get("inputs_bloque_sel")
 
+if selected_input_block:
+    st.markdown(
+        """
+        <div id="inputs-subblocks-anchor"></div>
+        <script>
+        const subblockAnchor = window.parent.document.getElementById("inputs-subblocks-anchor");
+        if (subblockAnchor) {
+          subblockAnchor.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
 input_block_copy = {
     "estado_actual": (
-        "1- Desarrollo y Consolidación del Activo Tecnológico",
+        "1- Activo Tecnológico y Validación",
         "Aquí consolidaremos el diagnóstico base del proyecto: situación actual, hitos alcanzados, brechas técnicas y supuestos iniciales del modelo.",
     ),
     "escalamiento": (
-        "2-Estrategia de Inversión y Ejecución de CAPEX",
+        "2- Capital Requerido y Ejecución CAPEX",
         "Este bloque quedará preparado para mostrar la ruta de escalamiento industrial, prioridades de inversión y asignación de fondos por etapa.",
     ),
     "valorizacion": (
-        "3-Modelo de Valorización y Retorno",
+        "3-Modelo de Valorización y Estructura de Inversión",
         "En esta sección vamos a integrar la lectura financiera de valorización, estructura de capital y criterios de inversión asociados al modelo.",
     ),
 }
@@ -4404,11 +5647,11 @@ elif selected_input_block == "escalamiento":
             <div class="capex-summary-panel">
               <div class="capex-summary-panel-h">Composición del capital</div>
               <div class="capex-summary-row">
-                <div class="capex-summary-label">CAPEX 10kW</div>
+                <div class="capex-summary-label">BRECHA PILOTO 10 KW</div>
                 <div class="capex-summary-value">{format_clp(capex_10kw_val)}</div>
               </div>
               <div class="capex-summary-row">
-                <div class="capex-summary-label">CAPEX 80kW</div>
+                <div class="capex-summary-label">ESCALAMIENTO 80 KW</div>
                 <div class="capex-summary-value">{format_clp(capex_80kw_val)}</div>
               </div>
               <div class="capex-summary-row">
@@ -4428,12 +5671,12 @@ elif selected_input_block == "escalamiento":
         f"""
         <div class="capex-detail-grid">
           <div class="capex-detail-card {'active' if capex_10kw_active else ''}">
-            <div class="capex-detail-k">Base de referencia</div>
+            <div class="capex-detail-k">BRECHA PILOTO 10 KW</div>
             <div class="capex-detail-t">{format_clp(capex_10kw_val)}</div>
             <div class="capex-detail-s">CAPEX 10kW asociado al piloto de validación tecnológica inicial.</div>
           </div>
           <div class="capex-detail-card {'active' if capex_80kw_active else ''}">
-            <div class="capex-detail-k">Escalamiento integrado</div>
+            <div class="capex-detail-k">ESCALAMIENTO 80 KW</div>
             <div class="capex-detail-t">{format_clp(capex_80kw_val)}</div>
             <div class="capex-detail-s">CAPEX 80kW total, incorporando estructura técnica y capital humano asociado.</div>
           </div>

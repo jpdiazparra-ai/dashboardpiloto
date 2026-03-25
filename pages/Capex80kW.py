@@ -1106,6 +1106,37 @@ def make_inputs_suministro_chart(df_in: pd.DataFrame):
     return fig, agg
 
 
+def apply_engineering_chart_typography(
+    fig,
+    *,
+    title_size: int = 21,
+    body_size: int = 13,
+    tick_size: int = 12,
+    legend_size: int = 12,
+):
+    layout_updates = {
+        "font": dict(color="#334155", size=body_size),
+        "legend": dict(font=dict(size=legend_size), title=dict(font=dict(size=legend_size, color="#475569"))),
+    }
+    title_text = None
+    if hasattr(fig.layout, "title") and fig.layout.title is not None:
+        title_text = getattr(fig.layout.title, "text", None)
+    if title_text not in (None, "", "undefined"):
+        layout_updates["title"] = dict(text=title_text, font=dict(size=title_size, color="#0f172a"), x=0.02)
+    else:
+        layout_updates["title"] = dict(text="", x=0.02)
+    fig.update_layout(**layout_updates)
+    fig.update_xaxes(
+        title_font=dict(size=body_size, color="#475569"),
+        tickfont=dict(size=tick_size, color="#64748B"),
+    )
+    fig.update_yaxes(
+        title_font=dict(size=body_size, color="#475569"),
+        tickfont=dict(size=tick_size, color="#64748B"),
+    )
+    return fig
+
+
 def render_inputs_sm_kpi_cards(tabla_sm: pd.DataFrame):
     if tabla_sm is None or tabla_sm.empty:
         return
@@ -1969,6 +2000,7 @@ def render_inputs_capex_10kw_detail():
                 font=dict(size=11),
             ),
         )
+        apply_engineering_chart_typography(fig_10kw, title_size=22, body_size=13, tick_size=12, legend_size=11)
         resumen_show = resumen_10kw[["Columna A", "Monto_fmt", "Items", "Pct_total"]].rename(
             columns={
                 "Columna A": "Componente",
@@ -2195,7 +2227,7 @@ def render_inputs_estado_actual_dashboard():
                 <div class="asset-hero-value">{format_clp(know_how_fw)}</div>
               </div>
               <div class="asset-hero-total">
-                <div class="asset-hero-label">Valor construido total</div>
+                <div class="asset-hero-label">Inersión a la fecha</div>
                 <div class="asset-hero-value">{format_clp(valor_activo_tecnologico)}</div>
               </div>
             </div>
@@ -2284,7 +2316,10 @@ def render_pagos_hitos(
     include_direction_salaries: bool = True,
 ):
     st.markdown("---")
-    st.subheader("Estructura de Desembolso de Capital por Hitos del Proyecto")
+    st.markdown(
+        '<div class="eng-body-title" style="font-size:21px;font-weight:800;color:#0f172a;margin:0 0 14px 0;">Estructura de Desembolso de Capital por Hitos del Proyecto</div>',
+        unsafe_allow_html=True,
+    )
 
     try:
         df_raw_pagos = pd.read_csv(capex_url, dtype=str)
@@ -2414,13 +2449,18 @@ def render_pagos_hitos(
                 .sort_values(["Mes", "Item"])
             )
 
-        st.subheader("Hitos de pagos")
-        unit_sel = st.selectbox(
-            "Moneda/escala",
-            ["USD (miles)", "CLP (millones)"],
-            index=0,
-            key=f"{key_prefix}pay_currency_selector",
+        st.markdown(
+            '<div class="eng-body-title" style="font-size:15px;font-weight:600;color:#475569;margin:0 0 10px 0;">Hitos de pagos</div>',
+            unsafe_allow_html=True,
         )
+        ctrl_col1, ctrl_col2 = st.columns([1, 1.15], gap="large")
+        with ctrl_col1:
+            unit_sel = st.selectbox(
+                "Moneda/escala",
+                ["USD (miles)", "CLP (millones)"],
+                index=0,
+                key=f"{key_prefix}pay_currency_selector",
+            )
         if unit_sel.startswith("USD"):
             scale_factor = 1.0 / 1_000.0
             axis_unit = "miles USD"
@@ -2441,16 +2481,17 @@ def render_pagos_hitos(
         def scale_usd(series: pd.Series) -> pd.Series:
             return series * scale_factor
 
-        view_sel = st.selectbox(
-            "Selecciona vista",
-            [
-                "1) Inyección por hito (Anticipo/FAT/SAT)",
-                "2) Inyección por ítem",
-                "3) Total por período + categoría",
-            ],
-            index=1,
-            key=f"{key_prefix}pay_view_selector",
-        )
+        with ctrl_col2:
+            view_sel = st.selectbox(
+                "Selecciona vista",
+                [
+                    "1) Inyección por hito (Anticipo/FAT/SAT)",
+                    "2) Inyección por ítem",
+                    "3) Total por período + categoría",
+                ],
+                index=1,
+                key=f"{key_prefix}pay_view_selector",
+            )
 
         if view_sel.startswith("1"):
             df_flujo_plot = df_consolidado.copy()
@@ -2532,6 +2573,7 @@ def render_pagos_hitos(
                     x=0.5,
                 ),
             )
+            apply_engineering_chart_typography(fig_iny, title_size=20, body_size=13, tick_size=12, legend_size=11)
             fig_iny.update_xaxes(dtick=1)
             for mes, total in zip(df_flujo_plot["Mes"], df_flujo_plot["Total_plot"]):
                 fig_iny.add_annotation(
@@ -2542,7 +2584,11 @@ def render_pagos_hitos(
                     yanchor="bottom",
                     font=dict(color="#111827", size=11),
                 )
-            st.plotly_chart(fig_iny, use_container_width=True)
+            st.plotly_chart(
+                fig_iny,
+                use_container_width=True,
+                key=f"{key_prefix}pay_hitos_chart",
+            )
 
         elif view_sel.startswith("2"):
             if df_item_periodo.empty:
@@ -2595,8 +2641,11 @@ def render_pagos_hitos(
                         y=-0.2,
                         xanchor="center",
                         x=0.5,
+                        title=dict(text="Ítem"),
                     ),
+                    hoverlabel=dict(bgcolor="white"),
                 )
+                apply_engineering_chart_typography(fig_item_iny, title_size=20, body_size=13, tick_size=12, legend_size=11)
                 fig_item_iny.update_xaxes(dtick=1)
                 for mes, total in zip(df_item_total["Mes"], df_item_total["Total_plot"]):
                     fig_item_iny.add_annotation(
@@ -2607,7 +2656,11 @@ def render_pagos_hitos(
                         yanchor="bottom",
                         font=dict(color="#111827", size=11),
                     )
-                st.plotly_chart(fig_item_iny, use_container_width=True)
+                st.plotly_chart(
+                    fig_item_iny,
+                    use_container_width=True,
+                    key=f"{key_prefix}pay_items_chart",
+                )
 
         elif view_sel.startswith("3"):
             if df_item_periodo.empty:
@@ -2650,6 +2703,7 @@ def render_pagos_hitos(
                         x=0.5,
                     ),
                 )
+                apply_engineering_chart_typography(fig_cat_total, title_size=20, body_size=13, tick_size=12, legend_size=11)
                 fig_cat_total.update_xaxes(dtick=1)
                 for mes, total in zip(df_total["Mes"], df_total["Total_plot"]):
                     fig_cat_total.add_annotation(
@@ -2660,7 +2714,11 @@ def render_pagos_hitos(
                         yanchor="bottom",
                         font=dict(color="#111827", size=11),
                     )
-                st.plotly_chart(fig_cat_total, use_container_width=True)
+                st.plotly_chart(
+                    fig_cat_total,
+                    use_container_width=True,
+                    key=f"{key_prefix}pay_categoria_chart",
+                )
 
     except Exception as e:
         st.error(f"No se pudo construir el análisis de pagos: {e}")
@@ -2841,7 +2899,10 @@ def render_resumen_content(
     include_export: bool = True,
     include_direction_item: bool = False,
 ):
-    st.subheader("Estructura de Inversión y Ejecución de CAPEX – Piloto 80 kW")
+    st.markdown(
+        '<div class="eng-body-title" style="font-size:21px;font-weight:800;color:#0f172a;margin:0 0 14px 0;">Estructura de Inversión y Ejecución de CAPEX – Piloto 80 kW</div>',
+        unsafe_allow_html=True,
+    )
 
     df_items_tot = (
         df_capex
@@ -2881,34 +2942,60 @@ def render_resumen_content(
     )
     df_items_tot = df_items_tot.sort_values("Total_CLP", ascending=False)
 
+    item_total_title = (
+        "CAPEX + Capital Humano por ítem (monto total y % del total integrado)"
+        if include_direction_item
+        else "CAPEX por ítem (monto total y % del CAPEX)"
+    )
+
+    st.markdown(
+        f'<div class="eng-body-title" style="font-size:15px;font-weight:600;color:#475569;margin:0 0 10px 0;">{item_total_title}</div>',
+        unsafe_allow_html=True,
+    )
+    resumen_color_map = {**CAT_COLOR_MAP, "Dirección técnica": "#0F766E"}
+
     fig_item_total = px.bar(
         df_items_tot,
         x="Total_MM",
         y="Item",
         orientation="h",
         text="Texto",
-        color="Item",
-        color_discrete_map={**item_color_map, "Capital Humano": "#0F766E"},
-        labels={"Total_MM": "Monto (millones de CLP)", "Item": "Ítem"},
-        title=(
-            "CAPEX + Capital Humano por ítem (monto total y % del total integrado)"
-            if include_direction_item
-            else "CAPEX por ítem (monto total y % del CAPEX)"
-        ),
+        color="Categoria",
+        color_discrete_map=resumen_color_map,
+        labels={"Total_MM": "Monto (millones de CLP)", "Item": "Ítem", "Categoria": "Categoría técnica"},
+        title=None,
     )
-    fig_item_total.update_traces(textposition="inside", insidetextanchor="middle", textfont_size=11)
+    fig_item_total.update_traces(
+        textposition="inside",
+        insidetextanchor="middle",
+        textfont_size=11,
+        marker=dict(line=dict(color="rgba(255,255,255,0.88)", width=1.2)),
+        hovertemplate="<b>%{y}</b><br>Categoría técnica: %{fullData.name}<br>Monto: %{x:.1f} MM CLP<extra></extra>",
+    )
     fig_item_total.update_layout(
         xaxis_title="Monto total (millones de CLP)",
         yaxis_title="",
-        margin=dict(l=10, r=10, t=40, b=10),
-        showlegend=False,
+        margin=dict(l=10, r=10, t=40, b=110),
+        showlegend=True,
+        legend_title_text="Categoría técnica",
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.18,
+            xanchor="left",
+            x=0,
+        ),
         height=420,
         bargap=0.25,
     )
+    apply_engineering_chart_typography(fig_item_total, title_size=20, body_size=13, tick_size=12, legend_size=12)
     st.plotly_chart(fig_item_total, use_container_width=True)
     st.session_state["fig_item_total"] = fig_item_total
 
-    st.markdown("### Secuencia de Ejecución del CAPEX y Desarrollo del Proyecto")
+    st.markdown(
+        '<div class="eng-body-title" style="font-size:18px;font-weight:700;color:#0f172a;margin:8px 0 12px 0;">Secuencia de Ejecución del CAPEX y Desarrollo del Proyecto</div>',
+        unsafe_allow_html=True,
+    )
     if "Mes_inicio" in df_capex.columns and "Mes_termino" in df_capex.columns:
         df_timeline = df_capex.dropna(subset=["Mes_inicio", "Mes_termino"]).copy()
         if not df_timeline.empty:
@@ -2943,11 +3030,11 @@ def render_resumen_content(
                     }
                     return mapa.get(opt, opt)
 
-                item_sel = st.radio(
+                item_sel = st.pills(
                     "Filtrar por ítem:",
                     options=opciones,
-                    index=0,
-                    horizontal=True,
+                    default="Todas",
+                    selection_mode="single",
                     key=f"{key_prefix}timeline_radio_item_cat",
                     format_func=_fmt_item,
                 )
@@ -2994,8 +3081,14 @@ def render_resumen_content(
                         margin=dict(l=10, r=10, t=60, b=10),
                         height=520,
                         legend_title_text="Ítem",
+                        hoverlabel=dict(bgcolor="white"),
                     )
-                    st.plotly_chart(fig_timeline_cat, use_container_width=True)
+                    apply_engineering_chart_typography(fig_timeline_cat, title_size=20, body_size=13, tick_size=12, legend_size=11)
+                    st.plotly_chart(
+                        fig_timeline_cat,
+                        use_container_width=True,
+                        key=f"{key_prefix}timeline_categoria_chart",
+                    )
 
     render_pagos_hitos(
         capex_url,
@@ -3101,6 +3194,7 @@ def render_capex_categoria_content():
                         margin=dict(l=0, r=120, t=10, b=10),
                         height=280,
                     )
+                    apply_engineering_chart_typography(fig_donut_item, title_size=18, body_size=12, tick_size=11, legend_size=11)
                     st.plotly_chart(fig_donut_item, use_container_width=True)
     else:
         st.info("No hay ítems para mostrar en los dónuts según las categorías seleccionadas.")
@@ -3142,6 +3236,7 @@ def render_capex_categoria_content():
         bargap=0.25,
         showlegend=False,
     )
+    apply_engineering_chart_typography(fig_cat, title_size=20, body_size=13, tick_size=12, legend_size=12)
     st.plotly_chart(fig_cat, use_container_width=True)
     st.session_state["fig_cat_categoria"] = fig_cat
 
@@ -3214,6 +3309,7 @@ def render_capex_items_content():
     )
     fig_top.update_traces(text=df_top["Monto_CLP_MM"].apply(lambda v: f"{v:.1f} MM"), textposition="outside")
     fig_top.update_layout(xaxis_title="Monto (millones de CLP)", yaxis_title="", margin=dict(l=10, r=10, t=60, b=10))
+    apply_engineering_chart_typography(fig_top, title_size=20, body_size=13, tick_size=12, legend_size=11)
     st.plotly_chart(fig_top, use_container_width=True)
     st.session_state["fig_top_items"] = fig_top
 
@@ -3279,12 +3375,6 @@ def render_capex_module_content(selector_key: str = "capex_internal_selector"):
 
 
 def render_direccion_module_content():
-    st.subheader("Fondos de Dirección / Director General Técnico")
-    st.info(
-        "Esta pestaña muestra fondos de estructura técnica y dirección que se leen desde la hoja "
-        "`Director General Técnico`. Estos montos no se suman al CAPEX base de 480 MM CLP."
-    )
-
     if direccion_error:
         st.error(direccion_error)
     elif df_direccion.empty:
@@ -3292,13 +3382,15 @@ def render_direccion_module_content():
     else:
         total_direccion = float(df_direccion["Total"].sum() or 0.0)
         total_meses = float(df_direccion["Meses"].sum() or 0.0)
-        costo_mensual_prom = (
+        costo_mensual_prom_simple = (
             float(df_direccion["Costo empresa mensual"].mean() or 0.0)
             if not df_direccion["Costo empresa mensual"].empty else 0.0
         )
+        costo_mensual_prom_ponderado = total_direccion / total_meses if total_meses > 0 else 0.0
+        meses_promedio = total_meses / len(df_direccion) if len(df_direccion) > 0 else 0.0
         capex_mas_direccion = capex_total_clp + total_direccion
 
-        dk1, dk2, dk3, dk4 = st.columns(4)
+        dk1, dk2, dk3 = st.columns(3)
         with dk1:
             kpi_card(
                 "Fondos dirección (CLP)",
@@ -3317,57 +3409,65 @@ def render_direccion_module_content():
                 f"{total_meses:,.0f}".replace(",", "."),
                 "Suma de meses reportados por cargo."
             )
-        with dk4:
-            kpi_card(
-                "CAPEX + Dirección",
-                format_clp(capex_mas_direccion),
-                "Vista referencial si quisieras observar ambos bloques juntos."
-            )
-
-        df_direccion["Total_MM"] = df_direccion["Total"] / 1e6
-        df_direccion["Costo_mensual_fmt"] = df_direccion["Costo empresa mensual"].apply(format_clp)
-        df_direccion["Total_fmt"] = df_direccion["Total"].apply(format_clp)
-
-        df_dir_plot = df_direccion.sort_values("Total", ascending=True).copy()
+        df_dir_plot = df_direccion.copy()
+        df_dir_plot["Total_MM"] = df_dir_plot["Total"] / 1e6
+        df_dir_plot["Participacion_pct"] = np.where(
+            total_direccion > 0,
+            df_dir_plot["Total"] / total_direccion * 100.0,
+            0.0,
+        )
+        df_dir_plot["Etiqueta_barra"] = df_dir_plot.apply(
+            lambda row: f'{row["Total_MM"]:.1f} MM | {row["Participacion_pct"]:.1f}%',
+            axis=1,
+        )
+        df_dir_plot = df_dir_plot.sort_values("Total", ascending=True).copy()
         direccion_color_map = {
-            "Ingeniero Eléctrico": "#7C3AED",
+            "Ingeniero Eléctrico": "#2563EB",
             "Ingeniero Mecánico": "#0F766E",
-            "Ingeniero Proyecto (PMO)": "#C2410C",
-            "Director General Técnico": "#1D4ED8",
+            "Ingeniero Proyecto (PMO)": "#64748B",
+            "Director General Técnico": "#0F4C81",
         }
+        st.markdown(
+            '<div class="eng-body-title">Fondos por cargo de dirección técnica</div>',
+            unsafe_allow_html=True,
+        )
         fig_direccion = px.bar(
             df_dir_plot,
             x="Total_MM",
             y="Cargo",
             orientation="h",
-            text=df_dir_plot["Total_MM"].map(lambda v: f"{v:.1f} MM"),
+            text="Etiqueta_barra",
             color="Cargo",
             color_discrete_map=direccion_color_map,
-            title="Fondos por cargo de dirección técnica",
+            title=None,
             labels={"Total_MM": "Monto total (MM CLP)", "Cargo": ""},
         )
         fig_direccion.update_traces(
             textposition="outside",
-            marker=dict(line=dict(color="rgba(255,255,255,0.85)", width=1.2)),
-            hovertemplate="<b>%{y}</b><br>Total: %{x:.1f} MM CLP<extra></extra>",
+            textfont=dict(size=11, color="#334155"),
+            marker=dict(line=dict(color="rgba(255,255,255,0.92)", width=1.2)),
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "Total: %{x:.1f} MM CLP<br>"
+                "Participación: %{customdata[0]:.1f}%<br>"
+                "Meses: %{customdata[1]:.0f}<br>"
+                "Costo mensual: %{customdata[2]:,.0f} CLP<extra></extra>"
+            ),
+            customdata=df_dir_plot[["Participacion_pct", "Meses", "Costo empresa mensual"]],
         )
         fig_direccion.update_layout(
             showlegend=False,
-            margin=dict(l=10, r=32, t=70, b=24),
-            height=430,
+            margin=dict(l=10, r=70, t=34, b=24),
+            height=400,
             plot_bgcolor="white",
             paper_bgcolor="rgba(0,0,0,0)",
-            bargap=0.20,
-            title=dict(
-                text="Fondos por cargo de direccion tecnica",
-                font=dict(size=22, color="#0f172a"),
-                x=0.02,
-            ),
+            bargap=0.28,
             font=dict(color="#334155", size=13),
         )
+        apply_engineering_chart_typography(fig_direccion, title_size=20, body_size=13, tick_size=12, legend_size=12)
         fig_direccion.update_xaxes(
             showgrid=True,
-            gridcolor="rgba(148,163,184,0.25)",
+            gridcolor="rgba(148,163,184,0.18)",
             zeroline=False,
             ticksuffix=" MM",
         )
@@ -3376,12 +3476,13 @@ def render_direccion_module_content():
 
         col_dir_1, col_dir_2 = st.columns([1.2, 1])
         with col_dir_1:
-            st.markdown("#### Tabla base")
+            st.markdown("#### Tabla base de cargos")
+            df_dir_table = df_dir_plot.sort_values("Total", ascending=False).copy()
+            df_dir_table["Costo mensual"] = df_dir_table["Costo empresa mensual"].apply(format_clp)
+            df_dir_table["Total"] = df_dir_table["Total_MM"].map(lambda v: f"{v:.1f} MM CLP")
+            df_dir_table["Participación"] = df_dir_table["Participacion_pct"].map(lambda v: f"{v:.1f}%")
             st.dataframe(
-                df_direccion[["Cargo", "Meses", "Costo_mensual_fmt", "Total_fmt"]].rename(columns={
-                    "Costo_mensual_fmt": "Costo empresa mensual",
-                    "Total_fmt": "Total",
-                }),
+                df_dir_table[["Cargo", "Meses", "Costo mensual", "Total", "Participación"]],
                 hide_index=True,
                 use_container_width=True,
             )
@@ -3389,7 +3490,10 @@ def render_direccion_module_content():
             st.markdown("#### Lectura ejecutiva")
             st.markdown(
                 f"- Fondos de dirección identificados: **{format_clp(total_direccion)}**.\n"
-                f"- Costo empresa mensual promedio: **{format_clp(costo_mensual_prom)}**.\n"
+                f"- Costo mensual ponderado del bloque: **{format_clp(costo_mensual_prom_ponderado)}** "
+                f"(total dividido por **{total_meses:,.0f} meses**).".replace(",", ".") + "\n"
+                f"- Promedio simple entre cargos: **{format_clp(costo_mensual_prom_simple)}**; no coincide con el run-rate porque los cargos tienen distinta duración.\n"
+                f"- Duración promedio por cargo: **{meses_promedio:.1f} meses**.\n"
                 f"- Si se observa junto al CAPEX técnico, la referencia total sería **{format_clp(capex_mas_direccion)}**.\n"
                 f"- Este bloque se mantiene deliberadamente separado para no contaminar el desglose del CAPEX de ingeniería."
             )
@@ -3930,6 +4034,16 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             color:#64748B;
             margin-bottom:6px;
         }
+        .sup-head-main{
+            font-size:30px;
+            font-weight:800;
+            line-height:1.1;
+            letter-spacing:.06em;
+            text-transform:uppercase;
+            color:#64748B;
+            margin:0 0 8px 0;
+            max-width:980px;
+        }
         .sup-head-t{
             font-size:16px;
             line-height:1.55;
@@ -3955,6 +4069,14 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             text-transform:uppercase;
             color:#64748B;
             margin-bottom:10px;
+        }
+        .sup-input-shell [data-testid="stWidgetLabel"] p{
+            font-size:15px;
+            line-height:1.55;
+            font-weight:600;
+            letter-spacing:.04em;
+            text-transform:uppercase;
+            color:#64748B;
         }
         .sup-kpi-shell{
             margin-top:8px;
@@ -3988,17 +4110,28 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             color:#475569;
             max-width:980px;
         }
+        .eng-body-title{
+            font-size:15px;
+            line-height:1.55;
+            font-weight:600;
+            color:#475569;
+            margin:0 0 10px 0;
+        }
         .sup-shell div[data-testid="stButton"] > button,
         .sup-shell div[data-testid="stDownloadButton"] > button{
             min-height:74px;
             border-radius:999px;
-            padding:0 24px;
+            padding:0 24px 0 18px;
             font-size:18px;
             font-weight:800;
             letter-spacing:-0.01em;
             border:1px solid rgba(148,163,184,.18);
             box-shadow:0 14px 28px rgba(15,23,42,.10);
             transition:transform .18s ease, box-shadow .18s ease, filter .18s ease;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:12px;
         }
         .sup-shell div[data-testid="stButton"] > button:hover,
         .sup-shell div[data-testid="stDownloadButton"] > button:hover{
@@ -4007,41 +4140,61 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             filter:saturate(1.03);
         }
         .sup-shell div[data-testid="stButton"] > button{
-            color:#1E293B;
+            color:#ffffff;
+            border:1px solid rgba(185,28,28,.18);
             background:
-                radial-gradient(circle at 20% 20%, rgba(255,255,255,.40), transparent 34%),
-                linear-gradient(135deg,#FFFFFF 0%,#F3F8FF 48%,#E0EDFF 100%);
+                radial-gradient(circle at 20% 20%, rgba(255,255,255,.16), transparent 34%),
+                linear-gradient(135deg,#B91C1C 0%,#991B1B 45%,#7F1D1D 100%);
         }
         .sup-shell div[data-testid="stButton"] > button p{
             font-size:18px;
             font-weight:800;
-            color:#1E293B;
+            color:#ffffff;
+            margin:0;
         }
         .sup-shell div[data-testid="stDownloadButton"] > button{
             color:#ffffff;
-            border:1px solid rgba(59,130,246,.18);
+            border:1px solid rgba(30,64,175,.18);
             background:
-                radial-gradient(circle at 24% 24%, rgba(255,255,255,.28), transparent 28%),
-                linear-gradient(135deg,#2563EB 0%,#1D4ED8 40%,#0EA5E9 100%);
+                radial-gradient(circle at 24% 24%, rgba(255,255,255,.18), transparent 28%),
+                linear-gradient(135deg,#1E3A8A 0%,#1D4ED8 42%,#1E40AF 100%);
         }
         .sup-shell div[data-testid="stDownloadButton"] > button p{
             font-size:18px;
             font-weight:800;
             color:#ffffff;
+            margin:0;
         }
         .sup-shell div[data-testid="stDownloadButton"] > button::before{
-            content:"⬇";
-            display:inline-block;
-            margin-right:10px;
+            content:"📄";
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            width:34px;
+            height:34px;
+            border-radius:999px;
+            background:rgba(255,255,255,.18);
+            border:1px solid rgba(255,255,255,.22);
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
             font-size:18px;
             font-weight:900;
+            flex:0 0 auto;
         }
         .sup-shell div[data-testid="stButton"] > button::before{
-            content:"↺";
-            display:inline-block;
-            margin-right:10px;
+            content:"⟲";
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            width:34px;
+            height:34px;
+            border-radius:999px;
+            background:rgba(255,255,255,.14);
+            border:1px solid rgba(255,255,255,.18);
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
+            color:#ffffff;
             font-size:18px;
             font-weight:900;
+            flex:0 0 auto;
         }
         </style>
         """,
@@ -4052,13 +4205,16 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     st.markdown('<div class="sup-shell">', unsafe_allow_html=True)
     sh_col, reset_col, pdf_col = st.columns([1, 0.24, 0.28])
     with sh_col:
-        st.subheader(supuestos_title_map.get(bloque_sel, "Supuestos Clave del Modelo de Valorización"))
         st.markdown(
-            f'<p class="sup-head-t">{supuestos_subtitle_map.get(bloque_sel, "")}</p>',
+            f'<div class="sup-head-main">{supuestos_title_map.get(bloque_sel, "Supuestos Clave del Modelo de Valorización")}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="eng-body-title">{supuestos_subtitle_map.get(bloque_sel, "")}</div>',
             unsafe_allow_html=True,
         )
     with reset_col:
-        if st.button("Restablecer supuestos", key=widget_key("reset_supuestos"), use_container_width=True):
+        if st.button("⟲ Restablecer supuestos", key=widget_key("reset_supuestos"), use_container_width=True):
             for group_name in ("base", "post"):
                 for name, default_value in group_widget_defaults[group_name].items():
                     st.session_state[shared_state_key(name, group_name)] = default_value
@@ -4623,11 +4779,11 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             col_eerr_1, col_eerr_2 = st.columns([1.7, 1])
             with col_eerr_1:
                 st.markdown('<div class="eng-section-label">Lectura financiera integrada</div>', unsafe_allow_html=True)
-                st.markdown('#### Proyección Financiera Integrada " Etapa comercial"')
+                st.markdown('<div class="eng-body-title">Proyección Financiera Integrada " Etapa comercial"</div>', unsafe_allow_html=True)
                 st.dataframe(eerr_styler, hide_index=True, use_container_width=True, height=360)
             with col_eerr_2:
                 st.markdown('<div class="eng-section-label">Drivers técnicos del modelo</div>', unsafe_allow_html=True)
-                st.markdown("#### Drivers unitarios del modelo")
+                st.markdown('<div class="eng-body-title">Drivers unitarios del modelo</div>', unsafe_allow_html=True)
                 drv_row_1 = st.columns(2)
                 with drv_row_1[0]:
                     kpi_card("Precio venta / turbina", format_usd(precio_venta_turbina), "Supuesto comercial unitario del modelo.", variant="sky")
@@ -4636,13 +4792,20 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                 drv_row_2 = st.columns(2)
                 with drv_row_2[0]:
                     kpi_card("EBITDA unitario", format_usd(ebitda_unitario_val), "Margen operativo unitario por turbina.", variant="sky")
-                with drv_row_2[1]:
-                    kpi_card("CAPEX inicial", format_usd(capex_inicial_eerr), "Valor base tomado de EERRv2 celda C15.", variant="sky")
+            with drv_row_2[1]:
+                kpi_card("CAPEX inicial", format_usd(capex_inicial_eerr), "Valor base tomado de EERRv2 celda C15.", variant="sky")
 
-            st.markdown("#### Flujo de Caja del Proyecto y Estrategia de Reinversión")
-            st.dataframe(style_engineering_table(cash_data), hide_index=True, use_container_width=True, height=420)
+            st.markdown('<div class="eng-body-title">Flujo de Caja del Proyecto y Estrategia de Reinversión</div>', unsafe_allow_html=True)
+            cash_styler = style_engineering_table(cash_data).apply(
+                lambda row: [
+                    "font-weight: 800;" if clean_sheet_cell(row.iloc[0]) in {"EBITDA", "CAPEX inicial", "Flujo de caja neto"} else ""
+                    for _ in row
+                ],
+                axis=1,
+            )
+            st.dataframe(cash_styler, hide_index=True, use_container_width=True, height=420)
             st.markdown('<div class="eng-section-label">Desempeño consolidado</div>', unsafe_allow_html=True)
-            st.markdown("### Desempeño Financiero y Operativo del Proyecto")
+            st.markdown('<div class="eng-body-title">Desempeño Financiero y Operativo del Proyecto</div>', unsafe_allow_html=True)
             mini_cards = [
                 ("Ingresos promedio", kpi_map.get("Ingresos promedio (USD)", "-"), "Promedio anual del escenario EERR."),
                 ("EBITDA promedio", kpi_map.get("EBITDA promedio (USD)", "-"), "Promedio anual operativo."),
@@ -5103,7 +5266,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     csv_valorizacion = df_valorizacion.to_csv(index=False).encode("utf-8-sig")
     if REPORTLAB_AVAILABLE:
         pdf_export_slot.download_button(
-            label="Descargar PDF de supuestos",
+            label="📄 Descargar PDF de supuestos",
             data=build_valorizacion_supuestos_pdf(),
             file_name="Supuestos_Modelo_Valorizacion.pdf",
             mime="application/pdf",
@@ -5499,6 +5662,8 @@ elif selected_input_block == "escalamiento":
     capex_80kw_usd_total = float(df_capex_base["Monto_USD"].sum() or 0.0) if "Monto_USD" in df_capex_base.columns else 0.0
     capex_80kw_val = (capex_80kw_usd_total * fx_used) + float(direccion_total_clp or 0.0)
     capital_recaudar_val = capex_10kw_val + capex_80kw_val
+    capex_10kw_pct = (capex_10kw_val / capital_recaudar_val * 100.0) if capital_recaudar_val > 0 else 0.0
+    capex_80kw_pct = (capex_80kw_val / capital_recaudar_val * 100.0) if capital_recaudar_val > 0 else 0.0
 
     capex_10kw_active = st.session_state.get(capex_selector_state_key) == "10kw"
     capex_80kw_active = st.session_state.get(capex_selector_state_key) == "80kw"
@@ -5575,6 +5740,8 @@ elif selected_input_block == "escalamiento":
             border-bottom:1px solid rgba(226,232,240,.9);
         }
         .capex-summary-row:last-child{border-bottom:none;padding-bottom:0}
+        .capex-summary-row.total .capex-summary-label{color:#0f766e;}
+        .capex-summary-row.total .capex-summary-value{color:#0f766e;}
         .capex-summary-label{
             font-size:14px;
             font-weight:700;
@@ -5620,8 +5787,15 @@ elif selected_input_block == "escalamiento":
             font-weight:900;
             line-height:1;
             color:#0f172a;
+            margin-bottom:8px;
+        }
+        .capex-detail-pct{
+            font-size:13px;
+            font-weight:800;
+            color:#0f766e;
             margin-bottom:10px;
         }
+        .capex-detail-card.active .capex-detail-pct{color:#065f46;}
         .capex-detail-s{
             font-size:14px;
             line-height:1.5;
@@ -5647,14 +5821,14 @@ elif selected_input_block == "escalamiento":
             <div class="capex-summary-panel">
               <div class="capex-summary-panel-h">Composición del capital</div>
               <div class="capex-summary-row">
-                <div class="capex-summary-label">BRECHA PILOTO 10 KW</div>
+                <div class="capex-summary-label">Brecha piloto 10 kW</div>
                 <div class="capex-summary-value">{format_clp(capex_10kw_val)}</div>
               </div>
               <div class="capex-summary-row">
-                <div class="capex-summary-label">ESCALAMIENTO 80 KW</div>
+                <div class="capex-summary-label">Escalamiento 80 kW</div>
                 <div class="capex-summary-value">{format_clp(capex_80kw_val)}</div>
               </div>
-              <div class="capex-summary-row">
+              <div class="capex-summary-row total">
                 <div class="capex-summary-label">Capital consolidado</div>
                 <div class="capex-summary-value">{format_clp(capital_recaudar_val)}</div>
               </div>
@@ -5671,13 +5845,15 @@ elif selected_input_block == "escalamiento":
         f"""
         <div class="capex-detail-grid">
           <div class="capex-detail-card {'active' if capex_10kw_active else ''}">
-            <div class="capex-detail-k">BRECHA PILOTO 10 KW</div>
+            <div class="capex-detail-k">Brecha piloto 10 kW</div>
             <div class="capex-detail-t">{format_clp(capex_10kw_val)}</div>
+            <div class="capex-detail-pct">{capex_10kw_pct:.1f}% del Capital a Recaudar</div>
             <div class="capex-detail-s">CAPEX 10kW asociado al piloto de validación tecnológica inicial.</div>
           </div>
           <div class="capex-detail-card {'active' if capex_80kw_active else ''}">
-            <div class="capex-detail-k">ESCALAMIENTO 80 KW</div>
+            <div class="capex-detail-k">Escalamiento 80 kW</div>
             <div class="capex-detail-t">{format_clp(capex_80kw_val)}</div>
+            <div class="capex-detail-pct">{capex_80kw_pct:.1f}% del Capital a Recaudar</div>
             <div class="capex-detail-s">CAPEX 80kW total, incorporando estructura técnica y capital humano asociado.</div>
           </div>
         </div>
@@ -5863,11 +6039,11 @@ if False:
                     }
                     return mapa.get(opt, opt)
     
-                item_sel = st.radio(
+                item_sel = st.pills(
                     "Filtrar por ítem:",
                     options=opciones,
-                    index=0,
-                    horizontal=True,
+                    default="Todas",
+                    selection_mode="single",
                     key="timeline_radio_item_cat",
                     format_func=_fmt_item,
                 )
@@ -6613,13 +6789,15 @@ def render_direccion_module_content():
     else:
         total_direccion = float(df_direccion["Total"].sum() or 0.0)
         total_meses = float(df_direccion["Meses"].sum() or 0.0)
-        costo_mensual_prom = (
+        costo_mensual_prom_simple = (
             float(df_direccion["Costo empresa mensual"].mean() or 0.0)
             if not df_direccion["Costo empresa mensual"].empty else 0.0
         )
+        costo_mensual_prom_ponderado = total_direccion / total_meses if total_meses > 0 else 0.0
+        meses_promedio = total_meses / len(df_direccion) if len(df_direccion) > 0 else 0.0
         capex_mas_direccion = capex_total_clp + total_direccion
 
-        dk1, dk2, dk3, dk4 = st.columns(4)
+        dk1, dk2, dk3 = st.columns(3)
         with dk1:
             kpi_card(
                 "Fondos dirección (CLP)",
@@ -6638,30 +6816,30 @@ def render_direccion_module_content():
                 f"{total_meses:,.0f}".replace(",", "."),
                 "Suma de meses reportados por cargo."
             )
-        with dk4:
-            kpi_card(
-                "CAPEX + Dirección",
-                format_clp(capex_mas_direccion),
-                "Vista referencial si quisieras observar ambos bloques juntos."
-            )
-
-        df_direccion["Total_MM"] = df_direccion["Total"] / 1e6
-        df_direccion["Costo_mensual_fmt"] = df_direccion["Costo empresa mensual"].apply(format_clp)
-        df_direccion["Total_fmt"] = df_direccion["Total"].apply(format_clp)
-
-        df_dir_plot = df_direccion.sort_values("Total", ascending=True).copy()
+        df_dir_plot = df_direccion.copy()
+        df_dir_plot["Total_MM"] = df_dir_plot["Total"] / 1e6
+        df_dir_plot["Participacion_pct"] = np.where(
+            total_direccion > 0,
+            df_dir_plot["Total"] / total_direccion * 100.0,
+            0.0,
+        )
+        df_dir_plot["Etiqueta_barra"] = df_dir_plot.apply(
+            lambda row: f'{row["Total_MM"]:.1f} MM | {row["Participacion_pct"]:.1f}%',
+            axis=1,
+        )
+        df_dir_plot = df_dir_plot.sort_values("Total", ascending=True).copy()
         direccion_color_map = {
-            "Ingeniero Eléctrico": "#7C3AED",
+            "Ingeniero Eléctrico": "#2563EB",
             "Ingeniero Mecánico": "#0F766E",
-            "Ingeniero Proyecto (PMO)": "#C2410C",
-            "Director General Técnico": "#1D4ED8",
+            "Ingeniero Proyecto (PMO)": "#64748B",
+            "Director General Técnico": "#0F4C81",
         }
         fig_direccion = px.bar(
             df_dir_plot,
             x="Total_MM",
             y="Cargo",
             orientation="h",
-            text=df_dir_plot["Total_MM"].map(lambda v: f"{v:.1f} MM"),
+            text="Etiqueta_barra",
             color="Cargo",
             color_discrete_map=direccion_color_map,
             title="Fondos por cargo de dirección técnica",
@@ -6669,16 +6847,24 @@ def render_direccion_module_content():
         )
         fig_direccion.update_traces(
             textposition="outside",
-            marker=dict(line=dict(color="rgba(255,255,255,0.85)", width=1.2)),
-            hovertemplate="<b>%{y}</b><br>Total: %{x:.1f} MM CLP<extra></extra>",
+            textfont=dict(size=11, color="#334155"),
+            marker=dict(line=dict(color="rgba(255,255,255,0.92)", width=1.2)),
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                "Total: %{x:.1f} MM CLP<br>"
+                "Participación: %{customdata[0]:.1f}%<br>"
+                "Meses: %{customdata[1]:.0f}<br>"
+                "Costo mensual: %{customdata[2]:,.0f} CLP<extra></extra>"
+            ),
+            customdata=df_dir_plot[["Participacion_pct", "Meses", "Costo empresa mensual"]],
         )
         fig_direccion.update_layout(
             showlegend=False,
-            margin=dict(l=10, r=32, t=70, b=24),
-            height=430,
+            margin=dict(l=10, r=70, t=70, b=24),
+            height=400,
             plot_bgcolor="white",
             paper_bgcolor="rgba(0,0,0,0)",
-            bargap=0.20,
+            bargap=0.28,
             title=dict(
                 text="Fondos por cargo de direccion tecnica",
                 font=dict(size=22, color="#0f172a"),
@@ -6686,9 +6872,10 @@ def render_direccion_module_content():
             ),
             font=dict(color="#334155", size=13),
         )
+        apply_engineering_chart_typography(fig_direccion, title_size=20, body_size=13, tick_size=12, legend_size=12)
         fig_direccion.update_xaxes(
             showgrid=True,
-            gridcolor="rgba(148,163,184,0.25)",
+            gridcolor="rgba(148,163,184,0.18)",
             zeroline=False,
             ticksuffix=" MM",
         )
@@ -6697,12 +6884,13 @@ def render_direccion_module_content():
 
         col_dir_1, col_dir_2 = st.columns([1.2, 1])
         with col_dir_1:
-            st.markdown("#### Tabla base")
+            st.markdown("#### Tabla base de cargos")
+            df_dir_table = df_dir_plot.sort_values("Total", ascending=False).copy()
+            df_dir_table["Costo mensual"] = df_dir_table["Costo empresa mensual"].apply(format_clp)
+            df_dir_table["Total"] = df_dir_table["Total_MM"].map(lambda v: f"{v:.1f} MM CLP")
+            df_dir_table["Participación"] = df_dir_table["Participacion_pct"].map(lambda v: f"{v:.1f}%")
             st.dataframe(
-                df_direccion[["Cargo", "Meses", "Costo_mensual_fmt", "Total_fmt"]].rename(columns={
-                    "Costo_mensual_fmt": "Costo empresa mensual",
-                    "Total_fmt": "Total",
-                }),
+                df_dir_table[["Cargo", "Meses", "Costo mensual", "Total", "Participación"]],
                 hide_index=True,
                 use_container_width=True,
             )
@@ -6710,7 +6898,10 @@ def render_direccion_module_content():
             st.markdown("#### Lectura ejecutiva")
             st.markdown(
                 f"- Fondos de dirección identificados: **{format_clp(total_direccion)}**.\n"
-                f"- Costo empresa mensual promedio: **{format_clp(costo_mensual_prom)}**.\n"
+                f"- Costo mensual ponderado del bloque: **{format_clp(costo_mensual_prom_ponderado)}** "
+                f"(total dividido por **{total_meses:,.0f} meses**).".replace(",", ".") + "\n"
+                f"- Promedio simple entre cargos: **{format_clp(costo_mensual_prom_simple)}**; no coincide con el run-rate porque los cargos tienen distinta duración.\n"
+                f"- Duración promedio por cargo: **{meses_promedio:.1f} meses**.\n"
                 f"- Si se observa junto al CAPEX técnico, la referencia total sería **{format_clp(capex_mas_direccion)}**.\n"
                 f"- Este bloque se mantiene deliberadamente separado para no contaminar el desglose del CAPEX de ingeniería."
             )

@@ -9,29 +9,34 @@ from io import BytesIO
 import plotly.io as pio
 import re
 import unicodedata
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    Image,
-    PageBreak,
-)
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.lib import colors
 import math
 import plotly.graph_objects as go
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+        Image,
+        PageBreak,
+    )
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    REPORTLAB_AVAILABLE = True
+except ModuleNotFoundError:
+    REPORTLAB_AVAILABLE = False
 
 
 # =========================
 # CONFIGURACIÓN GLOBAL
 # =========================
 st.set_page_config(
-    page_title="CAPEX Piloto Eólico 80 kW",
+    page_title="CAPEX Piloto Eólico 80 kW · Mercado",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -834,7 +839,7 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
     cards = f"""
     <div class="inputs-fin-summary">
       <div class="inputs-fin-hero">
-        <div class="inputs-fin-row"><div class="inputs-fin-ico">💰</div><div class="inputs-fin-h">Inversión Ejecutada en el Activo Tecnológico</div></div>
+        <div class="inputs-fin-row"><div class="inputs-fin-ico">💰</div><div class="inputs-fin-h">Costo Ejecutado</div></div>
         <div class="inputs-fin-v">{html.escape(format_clp(monto_total))}</div>
         <div class="inputs-fin-sub">
           <span class="inputs-fin-chip">Base: {n_items:,} ítems</span>
@@ -1783,6 +1788,16 @@ def render_inputs_estado_actual_dashboard():
         return
 
     valor_activo_tecnologico, monto_total, capacidades_externo, know_how_fw = get_valor_activo_tecnologico_construido()
+    evidencia_ratio = (monto_total / valor_activo_tecnologico) if valor_activo_tecnologico > 0 else 0.0
+    componente_intangible = capacidades_externo + know_how_fw
+
+    memo_cols = st.columns(3)
+    with memo_cols[0]:
+        kpi_card("Costo ejecutado", format_clp(monto_total), "Base verificable invertida en el piloto 10 kW.", variant="sky")
+    with memo_cols[1]:
+        kpi_card("Componente referencial", format_clp(componente_intangible), "Capacidades externas y know-how agregados a la lectura del activo.")
+    with memo_cols[2]:
+        kpi_card("% evidencia dura", f"{evidencia_ratio:.1%}", "Peso del costo ejecutado dentro del valor total del activo.", variant="green")
 
     st.markdown(
         """
@@ -1889,30 +1904,30 @@ def render_inputs_estado_actual_dashboard():
         <div class="asset-hero">
           <div class="asset-hero-grid">
             <div>
-              <div class="asset-hero-k">Resumen patrimonial técnico</div>
+              <div class="asset-hero-k">Activo tecnológico valorizado</div>
               <div class="asset-hero-t">Valor del Activo Tecnológico Construido</div>
               <div class="asset-hero-v">{format_clp(valor_activo_tecnologico)}</div>
               <div class="asset-hero-p">
-                Valor consolidado del activo construido considerando inversión ejecutada,
-                capacidades externas incorporadas y know-how técnico valorizado dentro del proceso de desarrollo.
+                Lectura patrimonial referencial del piloto 10 kW, separando costo ejecutado,
+                capacidades externas y know-how incorporado al activo para soportar una discusión de inversión.
               </div>
             </div>
             <div class="asset-hero-panel">
-              <div class="asset-hero-panel-h">Descomposición del valor</div>
+              <div class="asset-hero-panel-h">Descomposición referencial del activo</div>
               <div class="asset-hero-row">
-                <div class="asset-hero-label">Inversión ejecutada en el activo</div>
+                <div class="asset-hero-label">Costo ejecutado verificable</div>
                 <div class="asset-hero-value">{format_clp(monto_total)}</div>
               </div>
               <div class="asset-hero-row">
-                <div class="asset-hero-label">Capacidades externo</div>
+                <div class="asset-hero-label">Capacidades externas valorizadas</div>
                 <div class="asset-hero-value">{format_clp(capacidades_externo)}</div>
               </div>
               <div class="asset-hero-row">
-                <div class="asset-hero-label">Know-how FW</div>
+                <div class="asset-hero-label">Know-how FW referencial</div>
                 <div class="asset-hero-value">{format_clp(know_how_fw)}</div>
               </div>
               <div class="asset-hero-total">
-                <div class="asset-hero-label">Valor construido total</div>
+                <div class="asset-hero-label">Valor del activo construido</div>
                 <div class="asset-hero-value">{format_clp(valor_activo_tecnologico)}</div>
               </div>
             </div>
@@ -2476,11 +2491,54 @@ capex_total_integrado_real_clp = float(capex_total_real_clp or capex_total_clp) 
 # =========================
 # HEADER
 # =========================
-st.title("📊 Arquitectura de Inversión y Creación de Valor")
+st.title("📊 Arquitectura de Inversión y Valorización · Versión Mercado")
 st.caption(
-    "Panel interactivo para analizar la estructura de inversión del piloto de turbina eólica vertical híbrida. "
-    "Diseñado para uso en directorio, comité técnico y seguimiento de proyecto."
+    "Versión orientada a comité de inversión para revisar activo tecnológico, uso de fondos, valorización y estructura de ronda "
+    "del piloto de turbina eólica vertical híbrida."
 )
+st.markdown(
+    """
+    <div style="
+        margin:10px 0 24px 0;
+        padding:18px 20px;
+        border-radius:20px;
+        border:1px solid rgba(148,163,184,.20);
+        background:linear-gradient(90deg,#fffdf7 0%,#f8fbff 52%,#eefbf6 100%);
+        box-shadow:0 10px 24px rgba(15,23,42,.05);
+    ">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#92400e;margin-bottom:8px;">
+            Investment Memo View
+        </div>
+        <div style="font-size:26px;font-weight:900;line-height:1.15;color:#0f172a;margin-bottom:10px;">
+            Activo validado, capital requerido y valorización de ronda en una sola lectura ejecutiva
+        </div>
+        <div style="font-size:15px;line-height:1.65;color:#475569;max-width:1080px;">
+            Esta versión prioriza separación entre costo ejecutado, valor del activo, uso de fondos y outcome accionario
+            para facilitar discusión con inversionistas, comité y potenciales coinversionistas.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+trace_cols = st.columns(4)
+trace_items = [
+    ("Corte de datos", pd.Timestamp.now().strftime("%d-%m-%Y %H:%M"), "Último render de la versión mercado."),
+    ("Tipo de cambio", f"{fx_used:,.0f} CLP/USD".replace(",", "."), "Parámetro global aplicado al modelo."),
+    ("Fuente CAPEX 80 kW", "Google Sheets publicado", "Hoja fija conectada desde el código."),
+    ("Estatus de lectura", "Ejecutado / referencial", "Mezcla de costos ejecutados y valorizaciones explícitamente separadas."),
+]
+for col, (label, value, subtitle) in zip(trace_cols, trace_items):
+    with col:
+        st.markdown(
+            f"""
+            <div style="border-radius:16px;padding:14px 16px;border:1px solid rgba(148,163,184,.20);background:#fff;box-shadow:0 6px 14px rgba(15,23,42,.04);margin-bottom:12px;">
+                <div style="font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">{label}</div>
+                <div style="font-size:18px;font-weight:800;color:#0f172a;line-height:1.15;margin-bottom:6px;">{value}</div>
+                <div style="font-size:13px;line-height:1.45;color:#475569;">{subtitle}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 total_items = len(df_capex)
 total_categorias = df_cat["Categoria"].nunique()
@@ -2727,14 +2785,17 @@ def render_resumen_content(
     if include_export:
         st.markdown("---")
         st.subheader("📄 Exportar informe técnico")
-        pdf_bytes = build_pdf_report()
-        st.download_button(
-            label="📥 Descargar reporte PDF técnico (CAPEX Piloto 80 kW)",
-            data=pdf_bytes,
-            file_name="Reporte_CAPEX_Piloto_80kW.pdf",
-            mime="application/pdf",
-            key=f"{key_prefix}download_pdf_report",
-        )
+        if REPORTLAB_AVAILABLE:
+            pdf_bytes = build_pdf_report()
+            st.download_button(
+                label="📥 Descargar reporte PDF técnico (CAPEX Piloto 80 kW)",
+                data=pdf_bytes,
+                file_name="Reporte_CAPEX_Piloto_80kW.pdf",
+                mime="application/pdf",
+                key=f"{key_prefix}download_pdf_report",
+            )
+        else:
+            st.info("La exportación PDF está deshabilitada porque `reportlab` no está instalado en este entorno.")
 
 # =========================
 # KPI CARDS – DISEÑO PRO
@@ -3121,8 +3182,8 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     def _set_valorizacion_bloque(value: str):
         st.session_state[state_block_key] = value
 
-    st.subheader("Modelo de Valorización y Generación de Valor Económico")
-    st.caption("Vista técnica conectada a la hoja publicada de valorización.")
+    st.subheader("Valorización, Estructura de Ronda y Retorno Referencial")
+    st.caption("Vista orientada a comité de inversión conectada a la hoja publicada de valorización.")
 
     bloque_cards = [
         ("1. Fundamentos de Creación de Valor", "1- Fundamentos de Creación de Valor"),
@@ -3407,7 +3468,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             <div class="val-summary-hero">
               <div class="val-summary-grid">
                 <div>
-                  <div class="val-summary-k">Resumen de valorización</div>
+                  <div class="val-summary-k">Valorización referencial</div>
                   <div class="val-summary-t">Valorización Fluxial Hoy (Pre-money)</div>
                   <div class="val-summary-v">{format_usd(valorizacion_fluxial_preview)}</div>
                   <div class="val-summary-p">
@@ -3460,7 +3521,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             <div class="val-summary-hero">
               <div class="val-summary-grid">
                 <div>
-                  <div class="val-summary-k">Resumen de valorización</div>
+                  <div class="val-summary-k">Valorización referencial</div>
                   <div class="val-summary-t">Post-money Serie B</div>
                   <div class="val-summary-v">{format_usd(post_money_b_preview)}</div>
                   <div class="val-summary-p">
@@ -3877,6 +3938,15 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             st.plotly_chart(fig_eerr, use_container_width=True)
 
     elif bloque_sel == "2. Inversión Inicial y Validación Tecnológica (Serie A)":
+        st.markdown("#### Term sheet económico referencial")
+        term_cols = st.columns(3)
+        with term_cols[0]:
+            kpi_card("Capital nuevo", format_usd(inversion_usd), "Monto que entra para construir y validar la etapa piloto.", variant="sky")
+        with term_cols[1]:
+            kpi_card("Ownership entregado", f"{imelsa_pct:.1%}", "Participación económica objetivo del inversionista/coinversionista.")
+        with term_cols[2]:
+            kpi_card("Ownership fundador remanente", f"{fluxial_pct:.1%}", "Participación remanente posterior a la entrada de capital.", variant="green")
+
         metric_cols = st.columns(4)
         mk1, mk2, mk3, mk4 = metric_cols
         with mk1:
@@ -3921,6 +3991,25 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             st.plotly_chart(fig_cap_a, use_container_width=True)
 
     elif bloque_sel == "3. Escenario de Valorización Post-Validación":
+        downside_val = base_post_money_serie_a + (volume_input * ebitda_unit_input * max(multiple_input * 0.75, 1.0))
+        base_val = valor_post_piloto
+        upside_val = base_post_money_serie_a + (volume_input * ebitda_unit_input * (multiple_input * 1.25))
+        scen1, scen2, scen3 = st.columns(3)
+        with scen1:
+            kpi_card("Escenario downside", format_usd(downside_val), "Compresión de múltiplo y menor expansión de valor.")
+        with scen2:
+            kpi_card("Escenario base", format_usd(base_val), "Escenario central del modelo post-validación.", variant="sky")
+        with scen3:
+            kpi_card("Escenario upside", format_usd(upside_val), "Expansión de valor con validación y múltiplo más fuerte.", variant="green")
+        scenario_df = pd.DataFrame(
+            [
+                {"Escenario": "Downside", "Valorización": format_usd(downside_val), "Lectura": "Menor expansión de múltiplo y validación menos premiada."},
+                {"Escenario": "Base", "Valorización": format_usd(base_val), "Lectura": "Escenario central con supuestos actuales del modelo."},
+                {"Escenario": "Upside", "Valorización": format_usd(upside_val), "Lectura": "Validación comercial/técnica capturada en múltiplo superior."},
+            ]
+        )
+        st.dataframe(scenario_df, hide_index=True, use_container_width=True)
+
         mk1, mk2, mk3, mk4, mk5 = st.columns(5)
         with mk1:
             kpi_card("Pre Money actual (USD)", format_usd(base_post_money_serie_a), "Valor base heredado desde Post-money Serie A del bloque 2.")
@@ -3948,6 +4037,24 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         st.plotly_chart(fig_sens, use_container_width=True)
 
     else:
+        dilution_cols = st.columns(3)
+        with dilution_cols[0]:
+            kpi_card("Capital nuevo / post-money", f"{ronda_pct_input:.1%}", "Participación objetivo para nuevos inversionistas.", variant="sky")
+        with dilution_cols[1]:
+            kpi_card("Socios actuales remanentes", f"{pct_remanente:.1%}", "Participación agregada remanente tras Serie B.")
+        with dilution_cols[2]:
+            kpi_card("Valor remanente socios", format_usd(valor_fluxial_post_b + valor_imelsa_post_b), "Valor económico conjunto remanente de Fluxial + IMELSA.", variant="green")
+        st.markdown("#### Lectura de ronda Serie B")
+        ronda_df = pd.DataFrame(
+            [
+                {"Variable": "Pre-money Serie B", "Valor": format_usd(valor_post_piloto), "Lectura": "Valor base previo a la nueva entrada de capital."},
+                {"Variable": "Capital nuevo", "Valor": format_usd(capital_raise), "Lectura": "Monto a levantar para financiar escalamiento comercial."},
+                {"Variable": "Post-money Serie B", "Valor": format_usd(post_money_serie_b), "Lectura": "Valor económico posterior al cierre de la ronda."},
+                {"Variable": "Participación nuevos inversionistas", "Valor": f"{ronda_pct_input:.1%}", "Lectura": "Ownership cedido en la ronda."},
+            ]
+        )
+        st.dataframe(ronda_df, hide_index=True, use_container_width=True)
+
         mk1, mk2, mk3, mk4 = st.columns(4)
         with mk1:
             kpi_card("Valorización base Serie B", format_usd(valor_post_piloto), "Pre-money sugerido para la segunda ronda.")
@@ -4101,9 +4208,9 @@ def render_input_thousands_hint(value: float | int, prefix: str = ""):
 # NAVEGACIÓN PRINCIPAL
 # =========================
 input_cards = [
-    ("estado_actual", "1- Desarrollo y Consolidación del Activo Tecnológico"),
-    ("escalamiento", "2-Estrategia de Inversión y Ejecución de CAPEX"),
-    ("valorizacion", "3-Modelo de Valorización y Retorno"),
+    ("estado_actual", "1- Calidad del Activo y Evidencia de Validación"),
+    ("escalamiento", "2- Uso de Fondos y Ruta de Escalamiento"),
+    ("valorizacion", "3- Valorización, Ronda y Outcome Accionario"),
 ]
 
 if "inputs_bloque_sel" not in st.session_state:
@@ -4222,16 +4329,16 @@ selected_input_block = st.session_state.get("inputs_bloque_sel")
 
 input_block_copy = {
     "estado_actual": (
-        "1- Desarrollo y Consolidación del Activo Tecnológico",
-        "Aquí consolidaremos el diagnóstico base del proyecto: situación actual, hitos alcanzados, brechas técnicas y supuestos iniciales del modelo.",
+        "1- Calidad del Activo y Evidencia de Validación",
+        "Bloque orientado a demostrar que existe un activo tecnológico con evidencia de ejecución, validación y capacidad de escalar a una siguiente etapa.",
     ),
     "escalamiento": (
-        "2-Estrategia de Inversión y Ejecución de CAPEX",
-        "Este bloque quedará preparado para mostrar la ruta de escalamiento industrial, prioridades de inversión y asignación de fondos por etapa.",
+        "2- Uso de Fondos y Ruta de Escalamiento",
+        "Bloque enfocado en brecha de capital, destino de fondos y lógica de ejecución entre validación 10 kW y escalamiento 80 kW.",
     ),
     "valorizacion": (
-        "3-Modelo de Valorización y Retorno",
-        "En esta sección vamos a integrar la lectura financiera de valorización, estructura de capital y criterios de inversión asociados al modelo.",
+        "3- Valorización, Ronda y Outcome Accionario",
+        "Bloque de lectura para inversión: base actual, escenario post-validación, ronda proyectada y participación remanente de los socios.",
     ),
 }
 if selected_input_block == "estado_actual":
@@ -4256,6 +4363,15 @@ elif selected_input_block == "escalamiento":
     capex_80kw_usd_total = float(df_capex_base["Monto_USD"].sum() or 0.0) if "Monto_USD" in df_capex_base.columns else 0.0
     capex_80kw_val = (capex_80kw_usd_total * fx_used) + float(direccion_total_clp or 0.0)
     capital_recaudar_val = capex_10kw_val + capex_80kw_val
+    pct_gap_10kw = (capex_10kw_val / capital_recaudar_val) if capital_recaudar_val > 0 else 0.0
+    pct_scale_80kw = (capex_80kw_val / capital_recaudar_val) if capital_recaudar_val > 0 else 0.0
+    use_cols = st.columns(3)
+    with use_cols[0]:
+        kpi_card("Brecha piloto 10 kW", format_clp(capex_10kw_val), "Capital pendiente para cerrar validación inicial.", variant="sky")
+    with use_cols[1]:
+        kpi_card("Escalamiento 80 kW", format_clp(capex_80kw_val), "Capital asociado a ejecución industrial y capital humano.")
+    with use_cols[2]:
+        kpi_card("Mix de uso de fondos", f"{pct_gap_10kw:.0%} / {pct_scale_80kw:.0%}", "10 kW vs 80 kW dentro del capital total.", variant="green")
 
     capex_10kw_active = st.session_state.get(capex_selector_state_key) == "10kw"
     capex_80kw_active = st.session_state.get(capex_selector_state_key) == "80kw"
@@ -4394,15 +4510,15 @@ elif selected_input_block == "escalamiento":
         <div class="capex-summary-hero">
           <div class="capex-summary-grid">
             <div>
-              <div class="capex-summary-k">Resumen de capital</div>
-              <div class="capex-summary-t">Capital a Recaudar</div>
+              <div class="capex-summary-k">Use of funds</div>
+              <div class="capex-summary-t">Capital requerido</div>
               <div class="capex-summary-v">{format_clp(capital_recaudar_val)}</div>
               <div class="capex-summary-p">
-                Monto consolidado requerido para cubrir la referencia de CAPEX 10kW y el CAPEX integrado del piloto 80kW.
+                Monto consolidado requerido para cubrir la brecha del piloto 10 kW y la ejecución del escalamiento a 80 kW.
               </div>
             </div>
             <div class="capex-summary-panel">
-              <div class="capex-summary-panel-h">Composición del capital</div>
+              <div class="capex-summary-panel-h">Destino del capital</div>
               <div class="capex-summary-row">
                 <div class="capex-summary-label">CAPEX 10kW</div>
                 <div class="capex-summary-value">{format_clp(capex_10kw_val)}</div>
@@ -4412,7 +4528,7 @@ elif selected_input_block == "escalamiento":
                 <div class="capex-summary-value">{format_clp(capex_80kw_val)}</div>
               </div>
               <div class="capex-summary-row">
-                <div class="capex-summary-label">Capital consolidado</div>
+                <div class="capex-summary-label">Capital total requerido</div>
                 <div class="capex-summary-value">{format_clp(capital_recaudar_val)}</div>
               </div>
             </div>
@@ -4440,6 +4556,35 @@ elif selected_input_block == "escalamiento":
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+    uso_fondos_df = pd.DataFrame(
+        [
+            {
+                "Tramo": "Brecha piloto 10 kW",
+                "Capital": format_clp(capex_10kw_val),
+                "Riesgo que reduce": "Validación funcional y cierre de brecha de implementación del piloto.",
+                "Hito habilitado": "Piloto 10 kW completo y evidencia operativa base.",
+            },
+            {
+                "Tramo": "Escalamiento técnico 80 kW",
+                "Capital": format_clp(capex_80kw_val - direccion_total_clp),
+                "Riesgo que reduce": "Ingeniería, suministro, montaje y despliegue del sistema escalado.",
+                "Hito habilitado": "Activo 80 kW instalable con arquitectura industrial coherente.",
+            },
+            {
+                "Tramo": "Capital humano y ejecución",
+                "Capital": format_clp(direccion_total_clp),
+                "Riesgo que reduce": "Riesgo de coordinación técnica, supervisión y cierre de ejecución.",
+                "Hito habilitado": "Gobernanza y capacidad de entrega de la siguiente etapa.",
+            },
+        ]
+    )
+    st.markdown("#### Hitos financiados por el capital requerido")
+    st.dataframe(
+        uso_fondos_df,
+        hide_index=True,
+        use_container_width=True,
     )
 
     capex10_col, capex80_col = st.columns(2)
@@ -5504,6 +5649,8 @@ if False:
 
 def build_pdf_report() -> bytes:
     """Genera un informe técnico en PDF para directivos con KPIs y gráficos principales."""
+    if not REPORTLAB_AVAILABLE:
+        raise ModuleNotFoundError("reportlab no está instalado en este entorno.")
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()

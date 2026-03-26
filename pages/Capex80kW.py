@@ -745,6 +745,102 @@ def get_first_model_value(model_map: dict, candidates: list[str], default=0.0) -
     return float(default)
 
 
+@st.cache_data(show_spinner=False, ttl=120)
+def build_eerrv2_payload(df_eerrv2: pd.DataFrame, model_items: tuple[tuple[str, str], ...], ebitda_unit_default: float) -> dict:
+    payload = {
+        "eerr_data": pd.DataFrame(),
+        "cash_data": pd.DataFrame(),
+        "kpi_map": {},
+        "precio_venta_turbina": 0.0,
+        "costo_estimado_turbina": 0.0,
+        "ebitda_unitario_val": float(ebitda_unit_default or 0.0),
+        "capex_inicial_eerr": 0.0,
+        "chart_df": pd.DataFrame(columns=["Año", "Ingresos", "EBITDA", "Caja_neta", "Ingresos_MM", "EBITDA_MM", "Caja_MM"]),
+    }
+    if df_eerrv2 is None or df_eerrv2.empty or df_eerrv2.shape[0] < 3:
+        return payload
+
+    model_map = dict(model_items)
+
+    eerr_headers = [clean_sheet_cell(v) for v in df_eerrv2.iloc[1, 1:8].tolist()]
+    eerr_data = df_eerrv2.iloc[2:10, 1:8].copy()
+    eerr_data.columns = eerr_headers
+    for col in eerr_data.columns:
+        eerr_data[col] = eerr_data[col].map(clean_sheet_cell)
+
+    cash_headers = [clean_sheet_cell(v) for v in df_eerrv2.iloc[1, 1:8].tolist()]
+    cash_data = df_eerrv2.iloc[12:23, 1:8].copy()
+    cash_data.columns = cash_headers
+    for col in cash_data.columns:
+        cash_data[col] = cash_data[col].map(clean_sheet_cell)
+
+    kpi_headers = [clean_sheet_cell(v) for v in df_eerrv2.iloc[1, 9:11].tolist()]
+    kpi_data = df_eerrv2.iloc[2:10, 9:11].copy()
+    kpi_data.columns = kpi_headers
+    for col in kpi_data.columns:
+        kpi_data[col] = kpi_data[col].map(clean_sheet_cell)
+    kpi_map = {
+        clean_sheet_cell(row[kpi_headers[0]]): clean_sheet_cell(row[kpi_headers[1]])
+        for _, row in kpi_data.iterrows()
+        if clean_sheet_cell(row[kpi_headers[0]])
+    }
+
+    precio_venta_turbina = get_first_model_value(
+        model_map,
+        ["Precio venta / turbina", "Precio venta/turbina", "Precio venta turbina"],
+    )
+    costo_estimado_turbina = get_first_model_value(
+        model_map,
+        ["Costo estimado / turbina", "Costo estimado/turbina", "Costo estimado turbina"],
+    )
+    ebitda_unitario_val = get_first_model_value(
+        model_map,
+        ["EBITDA unitario", "EBITDA unitario de referencia"],
+        default=ebitda_unit_default,
+    )
+    capex_inicial_eerr = parse_model_number(clean_sheet_cell(df_eerrv2.iloc[14, 2])) if df_eerrv2.shape[0] > 14 and df_eerrv2.shape[1] > 2 else 0.0
+
+    eerr_numeric = eerr_data.copy()
+    series_cols = [c for c in eerr_numeric.columns if c != "Partida"]
+    for col in series_cols:
+        eerr_numeric[col] = eerr_numeric[col].map(parse_model_number)
+    row_lookup = {normalize_key(clean_sheet_cell(r["Partida"])): r for _, r in eerr_numeric.iterrows()}
+
+    cash_numeric = cash_data.copy()
+    cash_series_cols = [c for c in cash_numeric.columns if c != "Partida"]
+    for col in cash_series_cols:
+        cash_numeric[col] = cash_numeric[col].map(parse_model_number)
+    cash_row_lookup = {normalize_key(clean_sheet_cell(r["Partida"])): r for _, r in cash_numeric.iterrows()}
+
+    years = [c for c in series_cols]
+    chart_df = pd.DataFrame({"Año": years})
+    ingresos_row = row_lookup.get(normalize_key("Ingresos (USD)"), {})
+    ebitda_row = row_lookup.get(normalize_key("EBITDA (USD)"), {})
+    caja_row = cash_row_lookup.get(normalize_key("Flujo de caja neto"))
+    if not isinstance(caja_row, pd.Series):
+        caja_row = cash_row_lookup.get(normalize_key("Flujo caja neto"), {})
+    chart_df["Ingresos"] = [ingresos_row.get(y, 0.0) if isinstance(ingresos_row, pd.Series) else 0.0 for y in years]
+    chart_df["EBITDA"] = [ebitda_row.get(y, 0.0) if isinstance(ebitda_row, pd.Series) else 0.0 for y in years]
+    chart_df["Caja_neta"] = [caja_row.get(y, 0.0) if isinstance(caja_row, pd.Series) else 0.0 for y in years]
+    chart_df["Ingresos_MM"] = chart_df["Ingresos"] / 1e6
+    chart_df["EBITDA_MM"] = chart_df["EBITDA"] / 1e6
+    chart_df["Caja_MM"] = chart_df["Caja_neta"] / 1e6
+
+    payload.update(
+        {
+            "eerr_data": eerr_data,
+            "cash_data": cash_data,
+            "kpi_map": kpi_map,
+            "precio_venta_turbina": precio_venta_turbina,
+            "costo_estimado_turbina": costo_estimado_turbina,
+            "ebitda_unitario_val": ebitda_unitario_val,
+            "capex_inicial_eerr": capex_inicial_eerr,
+            "chart_df": chart_df,
+        }
+    )
+    return payload
+
+
 def get_knowhow_resumen_payload() -> dict:
     payload = {
         "title": "Know-how técnico derivado de la pestaña Pruebas",
@@ -1072,6 +1168,9 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
         .inputs-fin-hero{{
             background:linear-gradient(90deg,#EFF8FF 0%,#DFF4FF 42%,#C6ECFF 100%);
         }}
+        .inputs-fin-blank{{
+            background:linear-gradient(180deg,#f8fafc 0%,#ffffff 68%) !important;
+        }}
         .inputs-fin-row{{display:flex;align-items:center;gap:10px;margin-bottom:10px}}
         .inputs-fin-ico{{
             width:36px;height:36px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;
@@ -1111,7 +1210,7 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
 
     cards = f"""
     <div class="inputs-fin-summary">
-      <div class="inputs-fin-hero">
+      <div class="inputs-fin-hero inputs-fin-blank">
         <div class="inputs-fin-row"><div class="inputs-fin-ico">💰</div><div class="inputs-fin-h">Costo Ejecutado</div></div>
         <div class="inputs-fin-v">{html.escape(format_clp(monto_total))}</div>
         <div class="inputs-fin-sub">
@@ -1121,7 +1220,7 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
         <div class="inputs-fin-note">Inversión efectivamente ejecutada para construir y poner en forma operativa el activo tecnológico.</div>
       </div>
       {capacidades_card_html}
-      <div class="inputs-fin-side">
+      <div class="inputs-fin-side inputs-fin-blank">
         <div class="inputs-fin-row"><div class="inputs-fin-ico">⚙️</div><div class="inputs-fin-h">Know-how FW</div></div>
         <div class="inputs-fin-v">{html.escape(format_clp(know_how_fw))}</div>
         <div class="inputs-fin-sub"><span class="inputs-fin-chip">Valorización FW · G7</span></div>
@@ -2180,20 +2279,21 @@ def render_inputs_contexto_block():
                 )
 
 
-def get_valor_activo_tecnologico_construido() -> tuple[float, float, float, float]:
+@st.cache_data(show_spinner=False, ttl=120)
+def get_valor_activo_tecnologico_construido(refresh_nonce: int = 0) -> tuple[float, float, float, float]:
     monto_total = 0.0
     capacidades_externo = 0.0
     know_how_fw = 0.0
 
     try:
-        df_fin = load_dashboard_financiero_data(DASHBOARD_FINANCIERO_CSV_URL_DEFAULT, refresh_nonce=data_refresh_nonce)
+        df_fin = load_dashboard_financiero_data(DASHBOARD_FINANCIERO_CSV_URL_DEFAULT, refresh_nonce=refresh_nonce)
         if not df_fin.empty and "Monto" in df_fin.columns:
             monto_total = float(df_fin["Monto"].dropna().sum() or 0.0)
     except Exception:
         monto_total = 0.0
 
     try:
-        df_val_raw = load_valorizacion_raw_data(VALORIZACION_CSV_URL_DEFAULT, refresh_nonce=data_refresh_nonce)
+        df_val_raw = load_valorizacion_raw_data(VALORIZACION_CSV_URL_DEFAULT, refresh_nonce=refresh_nonce)
         if df_val_raw.shape[0] > 6 and df_val_raw.shape[1] > 6:
             capacidades_externo = float(parse_money_clp_robusto(clean_sheet_cell(df_val_raw.iloc[5, 6])) or 0.0)
     except Exception:
@@ -2388,7 +2488,7 @@ def render_inputs_estado_actual_dashboard():
         st.info("Selecciona uno de los sub-bloques para abrir su contenido.")
         return
 
-    valor_activo_tecnologico, monto_total, capacidades_externo, know_how_fw = get_valor_activo_tecnologico_construido()
+    valor_activo_tecnologico, monto_total, capacidades_externo, know_how_fw = get_valor_activo_tecnologico_construido(refresh_nonce=data_refresh_nonce)
 
     st.markdown(
         """
@@ -3990,12 +4090,17 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         df_valorizacion = pd.DataFrame()
         valorizacion_error = str(exc)
 
-    try:
-        df_eerrv2 = load_eerrv2_data(EERRV2_CSV_URL_DEFAULT, refresh_nonce=data_refresh_nonce)
-        eerrv2_error = None
-    except Exception as exc:
+    bloque_sel = st.session_state.get(state_block_key)
+    if bloque_sel == "1. Fundamentos de Creación de Valor":
+        try:
+            df_eerrv2 = load_eerrv2_data(EERRV2_CSV_URL_DEFAULT, refresh_nonce=data_refresh_nonce)
+            eerrv2_error = None
+        except Exception as exc:
+            df_eerrv2 = pd.DataFrame()
+            eerrv2_error = str(exc)
+    else:
         df_eerrv2 = pd.DataFrame()
-        eerrv2_error = str(exc)
+        eerrv2_error = None
 
     if valorizacion_error:
         st.error(f"No se pudo cargar la valorización: {valorizacion_error}")
@@ -4045,7 +4150,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
 
     df_model, model_map = get_valorizacion_model_map(df_valorizacion)
     fx_default = float(fx_used) if np.isfinite(fx_used) and fx_used > 0 else parse_model_number(model_map.get("fxclpusd", 915))
-    total_base_knowhow_clp, _, _, _ = get_valor_activo_tecnologico_construido()
+    total_base_knowhow_clp, _, _, _ = get_valor_activo_tecnologico_construido(refresh_nonce=data_refresh_nonce)
     pre_money_actual_default = total_base_knowhow_clp / fx_default if fx_default > 0 and total_base_knowhow_clp > 0 else 0.0
     capex_10kw_default = 0.0
     try:
@@ -4065,17 +4170,16 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         "fx": int(round(fx_default or 915)),
         "pre_money": int(round(pre_money_actual_default)),
         "inv_clp": int(round(inversion_clp_default)),
-        "investment_currency": "CLP",
+        "investment_currency": "USD",
         "volume": int(round(volumen_default)),
         "ebitda_unit": int(round(ebitda_unit_default)),
         "multiple": float(multiple_default or 1.0),
         "ronda_pct": float((ronda_pct_default or 0.70) * 100.0),
-        "valuation_basis": "BASE INVERSION + KNOW-HOW",
+        "valuation_basis": "EBITDA potencial ciclo inicial",
         "alloc_manual": False,
         "fluxial_pct_manual": 50.0,
         "imelsa_pct_manual": 50.0,
     }
-    bloque_sel = st.session_state.get(state_block_key)
     shared_group = "base" if bloque_sel in {"1. Fundamentos de Creación de Valor", "2. Serie A: Inversión Inicial y Validación"} else "post"
 
     def shared_state_key(name: str, group: str | None = None) -> str:
@@ -4139,7 +4243,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         <style>
         .val-summary-hero{
             border-radius:24px;
-            padding:22px 24px;
+            padding:16px 20px;
             background:
                 radial-gradient(circle at top right, rgba(14,165,164,.16), transparent 24%),
                 linear-gradient(90deg,#f8fbff 0%,#e7f5ff 48%,#d4efff 100%);
@@ -4150,7 +4254,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         .val-summary-grid{
             display:grid;
             grid-template-columns:1.25fr .95fr;
-            gap:18px;
+            gap:14px;
             align-items:stretch;
         }
         @media (max-width:1100px){.val-summary-grid{grid-template-columns:1fr;}}
@@ -4167,10 +4271,10 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             font-size:15px;line-height:1.6;color:#475569;max-width:720px;
         }
         .val-summary-panel{
-            border-radius:18px;padding:16px 18px;background:rgba(255,255,255,.76);border:1px solid rgba(148,163,184,.24);backdrop-filter:blur(6px);
+            border-radius:18px;padding:12px 14px;background:rgba(255,255,255,.76);border:1px solid rgba(148,163,184,.24);backdrop-filter:blur(6px);
         }
         .val-summary-panel-h{
-            font-size:12px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;color:#64748b;margin-bottom:10px;
+            font-size:12px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;color:#64748b;margin-bottom:8px;
         }
         .val-summary-row{
             display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(226,232,240,.9);
@@ -4181,6 +4285,49 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         }
         .val-summary-value{
             font-size:16px;font-weight:800;color:#0f172a;white-space:nowrap;
+        }
+        .val-multiple-head,
+        .val-multiple-row{
+            display:grid;
+            grid-template-columns:1fr auto;
+            gap:12px;
+            align-items:center;
+        }
+        .val-multiple-head{
+            padding:0 0 8px 0;
+            border-bottom:1px solid rgba(226,232,240,.95);
+            margin-bottom:2px;
+        }
+        .val-multiple-row{
+            padding:10px 0;
+            border-bottom:1px solid rgba(226,232,240,.9);
+        }
+        .val-multiple-row:last-child{
+            border-bottom:none;
+            padding-bottom:0;
+        }
+        .val-multiple-hl{
+            font-size:13px;
+            font-weight:800;
+            color:#0f172a;
+        }
+        .val-multiple-hv{
+            font-size:13px;
+            font-weight:800;
+            color:#0f172a;
+            text-align:right;
+        }
+        .val-multiple-l{
+            font-size:14px;
+            font-weight:700;
+            color:#0f172a;
+        }
+        .val-multiple-v{
+            font-size:16px;
+            font-weight:800;
+            color:#0f172a;
+            text-align:right;
+            white-space:nowrap;
         }
         </style>
         """,
@@ -4193,42 +4340,39 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         volume_preview = float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
         ebitda_unit_preview = float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
         multiple_preview = float(st.session_state.get(shared_state_key("multiple", "base"), multiple_default or 1))
-        valuation_basis_preview = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+        valuation_basis_preview = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "EBITDA potencial ciclo inicial"))
         base_en_usd_preview = (total_base_knowhow_clp / base_fx_preview) if base_fx_preview > 0 else 0.0
+        market_ebitda_base_preview = volume_preview * ebitda_unit_preview
         ebitda_preview = volume_preview * ebitda_unit_preview * multiple_preview
         valorizacion_fluxial_preview = resolve_fluxial_pre_money(valuation_basis_preview, base_en_usd_preview, ebitda_preview)
-        if valuation_basis_preview == "BASE INVERSION + KNOW-HOW":
-            if base_currency_preview == "CLP":
-                composition_rows_preview = (
-                    f'<div class="val-summary-row">'
-                    f'<div class="val-summary-label">BASE INVERSION + KNOW-HOW</div>'
-                    f'<div class="val-summary-value">{format_clp(total_base_knowhow_clp)}</div>'
-                    f'</div>'
-                )
-                valorizacion_fluxial_preview_display = format_clp(valorizacion_fluxial_preview * base_fx_preview)
-            else:
-                composition_rows_preview = (
-                    f'<div class="val-summary-row">'
-                    f'<div class="val-summary-label">BASE INVERSION + KNOW-HOW</div>'
-                    f'<div class="val-summary-value">{format_clp(total_base_knowhow_clp)}</div>'
-                    f'</div>'
-                    f'<div class="val-summary-row">'
-                    f'<div class="val-summary-label">BASE INVERSION + KNOW-HOW EN USD</div>'
-                    f'<div class="val-summary-value">{format_usd(base_en_usd_preview)}</div>'
-                    f'</div>'
-                )
-                valorizacion_fluxial_preview_display = format_usd(valorizacion_fluxial_preview)
-        else:
-            composition_rows_preview = (
-                f'<div class="val-summary-row">'
-                f'<div class="val-summary-label">Múltiplo EBITDA</div>'
-                f'<div class="val-summary-value">{multiple_preview:.2f}x</div>'
-                f'</div>'
-                f'<div class="val-summary-row">'
-                f'<div class="val-summary-label">EBITDA potencial multiplicado</div>'
-                f'<div class="val-summary-value">{format_clp(ebitda_preview * base_fx_preview) if base_currency_preview == "CLP" else format_usd(ebitda_preview)}</div>'
+        market_multiple_values = [1.0, 3.0, 7.0]
+        market_multiple_rows = []
+        for market_multiple in market_multiple_values:
+            implied_value_usd = market_ebitda_base_preview * market_multiple
+            implied_value_display = (
+                format_clp(implied_value_usd * base_fx_preview)
+                if base_currency_preview == "CLP"
+                else format_compact_usd(implied_value_usd)
+            )
+            market_multiple_rows.append(
+                f'<div class="val-multiple-row">'
+                f'<div class="val-multiple-l">{market_multiple:.1f}x</div>'
+                f'<div class="val-multiple-v">{implied_value_display}</div>'
                 f'</div>'
             )
+        composition_rows_preview = (
+            f'<div class="val-multiple-head">'
+            f'<div class="val-multiple-hl">Múltiplo</div>'
+            f'<div class="val-multiple-hv">Valor implícito</div>'
+            f'</div>'
+            + "".join(market_multiple_rows)
+        )
+        if valuation_basis_preview == "BASE INVERSION + KNOW-HOW":
+            if base_currency_preview == "CLP":
+                valorizacion_fluxial_preview_display = format_clp(valorizacion_fluxial_preview * base_fx_preview)
+            else:
+                valorizacion_fluxial_preview_display = format_usd(valorizacion_fluxial_preview)
+        else:
             valorizacion_fluxial_preview_display = format_clp(valorizacion_fluxial_preview * base_fx_preview) if base_currency_preview == "CLP" else format_usd(valorizacion_fluxial_preview)
         st.markdown("---")
         st.markdown(
@@ -4236,16 +4380,15 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             <div class="val-summary-hero">
               <div class="val-summary-grid">
                 <div>
-                  <div class="val-summary-k">Resumen de valorización</div>
-                  <div class="val-summary-t">Valorización Fluxial Hoy (Pre-money)</div>
+                  <div class="val-summary-k">EBITDA OBJETIVO EN REGIMEN</div>
+                  <div class="val-summary-t">EBITDA proyectado en escenario de escalamiento</div>
                   <div class="val-summary-v">{valorizacion_fluxial_preview_display}</div>
                   <div class="val-summary-p">
-                    Valor pre-money estimado segun la metodologia seleccionada para valorizacion,
-                    expresado en la moneda activa del sub-bloque.
+                    Estimación del EBITDA anual en escenario de operación escalada, considerando venta de turbinas bajo modelo industrial proyectado.
                   </div>
                 </div>
                 <div class="val-summary-panel">
-                  <div class="val-summary-panel-h">Composición del valor</div>
+                  <div class="val-summary-panel-h">Rango de Valor según Múltiplos de Mercado</div>
                   {composition_rows_preview}
                 </div>
               </div>
@@ -4261,7 +4404,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         post_ronda_pct_preview = float(st.session_state.get(shared_state_key("ronda_pct", "post"), (ronda_pct_default or 0.70) * 100.0)) / 100.0
 
         base_ebitda_preview = base_volume_preview * base_ebitda_unit_preview * post_multiple_preview
-        valuation_basis_preview = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+        valuation_basis_preview = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "EBITDA potencial ciclo inicial"))
         base_base_en_usd_preview = (total_base_knowhow_clp / base_fx_preview) if base_fx_preview > 0 else 0.0
         base_pre_money_preview = resolve_fluxial_pre_money(
             valuation_basis_preview,
@@ -4284,7 +4427,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             <div class="val-summary-hero">
               <div class="val-summary-grid">
                 <div>
-                  <div class="val-summary-k">Resumen de valorización</div>
+                  <div class="val-summary-k">EBITDA OBJETIVO EN REGIMEN</div>
                   <div class="val-summary-t">Post-money Serie B</div>
                   <div class="val-summary-v">{format_usd(post_money_b_preview)}</div>
                   <div class="val-summary-p">
@@ -4292,7 +4435,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                   </div>
                 </div>
                 <div class="val-summary-panel">
-                  <div class="val-summary-panel-h">Composición del valor</div>
+                  <div class="val-summary-panel-h">Referencia de Valor Implícito</div>
                   <div class="val-summary-row">
                     <div class="val-summary-label">Valorización base Serie B</div>
                     <div class="val-summary-value">{format_usd(valor_post_piloto_preview)}</div>
@@ -4544,7 +4687,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     alloc_manual_input = bool(st.session_state[shared_state_key("alloc_manual")])
     fluxial_pct_manual_input = float(st.session_state[shared_state_key("fluxial_pct_manual")]) / 100.0
     imelsa_pct_manual_input = float(st.session_state[shared_state_key("imelsa_pct_manual")]) / 100.0
-    investment_currency_input = str(st.session_state.get(shared_state_key("investment_currency"), "CLP"))
+    investment_currency_input = str(st.session_state.get(shared_state_key("investment_currency"), "USD"))
     aporte_no_pecuniario_clp = 0.0
     aporte_no_pecuniario_usd = 0.0
 
@@ -4569,15 +4712,15 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                 args=("valuation_basis",),
             )
         if valuation_basis_input == "EBITDA potencial ciclo inicial":
-            pcol3, pcol4 = st.columns(2)
-            with pcol3:
+            pcol4, pcol5, pcol6 = st.columns(3)
+            with pcol4:
                 volume_input = st.number_input("Volumen comercial", min_value=0, value=int(st.session_state[shared_state_key("volume")]), step=1, format="%d", key=prime_widget("volume"), on_change=sync_widget_to_state, args=("volume",))
                 render_input_thousands_hint(volume_input)
-            with pcol4:
+            with pcol5:
                 ebitda_unit_input = st.number_input("EBITDA unitario (USD)", min_value=0, value=int(st.session_state[shared_state_key("ebitda_unit")]), step=1000, format="%d", key=prime_widget("ebitda_unit"), on_change=sync_widget_to_state, args=("ebitda_unit",))
                 render_input_thousands_hint(ebitda_unit_input, "US$")
-        with st.columns(1)[0]:
-            multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
+            with pcol6:
+                multiple_input = st.slider("Múltiplo EBITDA", min_value=1.0, max_value=12.0, value=float(st.session_state[shared_state_key("multiple")]), step=0.5, key=prime_widget("multiple"), on_change=sync_widget_to_state, args=("multiple",))
         inversion_clp_input = float(st.session_state[shared_state_key("inv_clp")])
         captura_input = float(captura_default or 1.0)
         ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
@@ -4621,7 +4764,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         ronda_pct_input = float(st.session_state[shared_state_key("ronda_pct")]) / 100.0
         auto_ebitda_potencial = volume_input * ebitda_unit_input * multiple_input
         auto_base_en_usd = (total_base_knowhow_clp / fx_input) if fx_input > 0 else 0.0
-        auto_valuation_basis = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+        auto_valuation_basis = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "EBITDA potencial ciclo inicial"))
         auto_valorizacion_fluxial = resolve_fluxial_pre_money(
             auto_valuation_basis,
             auto_base_en_usd,
@@ -4772,7 +4915,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     base_en_usd = (total_base_knowhow_clp / fx_input) if fx_input > 0 else 0.0
     ebitda_potencial_ciclo_inicial = volume_input * ebitda_unit_input
     ebitda_potencial_multiplicado = ebitda_potencial_ciclo_inicial * multiple_input
-    valuation_basis_input = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+    valuation_basis_input = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "EBITDA potencial ciclo inicial"))
     valorizacion_fluxial_hoy = resolve_fluxial_pre_money(
         valuation_basis_input,
         base_en_usd,
@@ -4793,6 +4936,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
 
     # Serie B must inherit the ownership mix coming from block 2 / Serie A.
     base_fx_input = float(st.session_state.get(shared_state_key("fx", "base"), fx_default or 1))
+    base_investment_currency_input = str(st.session_state.get(shared_state_key("investment_currency", "base"), "USD"))
     base_pre_money_input = float(st.session_state.get(shared_state_key("pre_money", "base"), pre_money_actual_default))
     base_volume_input = float(st.session_state.get(shared_state_key("volume", "base"), volumen_default))
     base_ebitda_unit_input = float(st.session_state.get(shared_state_key("ebitda_unit", "base"), ebitda_unit_default))
@@ -4800,7 +4944,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     base_inversion_clp_input = float(st.session_state.get(shared_state_key("inv_clp", "base"), inversion_clp_default))
 
     base_ebitda_potencial = base_volume_input * base_ebitda_unit_input * base_multiple_input
-    base_valuation_basis_input = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "BASE INVERSION + KNOW-HOW"))
+    base_valuation_basis_input = str(st.session_state.get(shared_state_key("valuation_basis", "base"), "EBITDA potencial ciclo inicial"))
     base_base_en_usd = (total_base_knowhow_clp / base_fx_input) if base_fx_input > 0 else 0.0
     base_valorizacion_fluxial_hoy = resolve_fluxial_pre_money(
         base_valuation_basis_input,
@@ -4819,13 +4963,7 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         base_post_money_serie_a += base_aporte_no_pecuniario_usd
     else:
         base_aporte_no_pecuniario_usd = max(0.0, (base_post_money_serie_a * base_imelsa_pct) - base_inversion_usd) if base_post_money_serie_a > 0 else 0.0
-    ebitda_total = ebitda_potencial_ciclo_inicial
-    valor_post_piloto = ebitda_total * multiple_input
-    upside_pct = ((valor_post_piloto / base_post_money_serie_a) - 1.0) if base_post_money_serie_a > 0 else 0.0
-    valor_imelsa_post = valor_post_piloto * base_imelsa_pct
-    capital_raise = valor_post_piloto * ronda_pct_input
-    post_money_serie_b = valor_post_piloto + capital_raise
-    pct_remanente = 1.0 - ronda_pct_input
+
     socios_actuales_total_pct = base_fluxial_pct + base_imelsa_pct
     if socios_actuales_total_pct > 0:
         fluxial_share_base = base_fluxial_pct / socios_actuales_total_pct
@@ -4833,6 +4971,32 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
     else:
         fluxial_share_base = 0.0
         imelsa_share_base = 0.0
+
+    post_fx_input = float(st.session_state.get(shared_state_key("fx", "post"), fx_default or 1))
+    post_investment_currency_input = str(st.session_state.get(shared_state_key("investment_currency", "post"), "USD"))
+    post_volume_input = float(st.session_state.get(shared_state_key("volume", "post"), volumen_default))
+    post_ebitda_unit_input = float(st.session_state.get(shared_state_key("ebitda_unit", "post"), ebitda_unit_default))
+    post_multiple_input = float(st.session_state.get(shared_state_key("multiple", "post"), multiple_post_default))
+    post_ronda_pct_input = float(st.session_state.get(shared_state_key("ronda_pct", "post"), (ronda_pct_default or 0.70) * 100.0)) / 100.0
+    post_ebitda_total = post_volume_input * post_ebitda_unit_input
+    post_valor_post_piloto = post_ebitda_total * post_multiple_input
+    post_upside_pct = ((post_valor_post_piloto / base_post_money_serie_a) - 1.0) if base_post_money_serie_a > 0 else 0.0
+    post_valor_imelsa_post = post_valor_post_piloto * base_imelsa_pct
+    post_capital_raise = post_valor_post_piloto * post_ronda_pct_input
+    post_money_serie_b_pdf = post_valor_post_piloto + post_capital_raise
+    post_pct_remanente = 1.0 - post_ronda_pct_input
+    post_fluxial_post_b = post_pct_remanente * fluxial_share_base
+    post_imelsa_post_b = post_pct_remanente * imelsa_share_base
+    post_valor_post_piloto_clp = post_valor_post_piloto * post_fx_input
+    post_capital_raise_clp = post_capital_raise * post_fx_input
+    post_money_serie_b_clp_pdf = post_money_serie_b_pdf * post_fx_input
+    ebitda_total = ebitda_potencial_ciclo_inicial
+    valor_post_piloto = ebitda_total * multiple_input
+    upside_pct = ((valor_post_piloto / base_post_money_serie_a) - 1.0) if base_post_money_serie_a > 0 else 0.0
+    valor_imelsa_post = valor_post_piloto * base_imelsa_pct
+    capital_raise = valor_post_piloto * ronda_pct_input
+    post_money_serie_b = valor_post_piloto + capital_raise
+    pct_remanente = 1.0 - ronda_pct_input
     fluxial_post_b = pct_remanente * fluxial_share_base
     imelsa_post_b = pct_remanente * imelsa_share_base
     valor_fluxial_post_b = post_money_serie_b * fluxial_post_b
@@ -4862,20 +5026,31 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
         body = styles["BodyText"]
         body.fontSize = 9
         body.leading = 12
+        table_header = styles["BodyText"].clone("TableHeader")
+        table_header.fontName = "Helvetica-Bold"
+        table_header.fontSize = 8
+        table_header.leading = 10
+        table_header.wordWrap = "CJK"
+        table_cell = styles["BodyText"].clone("TableCell")
+        table_cell.fontName = "Helvetica"
+        table_cell.fontSize = 8
+        table_cell.leading = 10
+        table_cell.wordWrap = "CJK"
         elements = []
 
-        investment_currency_label = "CLP" if investment_currency_input == "CLP" else "USD"
-        valuation_basis_label_pdf = "BASE INVERSION + KNOW-HOW" if valuation_basis_input == "BASE INVERSION + KNOW-HOW" else "EBITDA potencial ciclo inicial"
-        post_multiple_assumption = float(st.session_state.get(shared_state_key("multiple", "post"), multiple_post_default))
-        post_ronda_assumption = float(st.session_state.get(shared_state_key("ronda_pct", "post"), (ronda_pct_default or 0.70) * 100.0)) / 100.0
-        post_money_serie_a_clp_pdf = post_money_serie_a * fx_input
-        valor_post_piloto_clp = valor_post_piloto * fx_input
-        capital_raise_clp = capital_raise * fx_input
-        post_money_serie_b_clp = post_money_serie_b * fx_input
+        investment_currency_label = "CLP" if base_investment_currency_input == "CLP" else "USD"
+        valuation_basis_label_pdf = "BASE INVERSION + KNOW-HOW" if base_valuation_basis_input == "BASE INVERSION + KNOW-HOW" else "EBITDA potencial ciclo inicial"
+        post_multiple_assumption = post_multiple_input
+        post_ronda_assumption = post_ronda_pct_input
+        post_money_serie_a_clp_pdf = base_post_money_serie_a * base_fx_input
 
         def add_table(title: str, rows: list[list[str]], col_widths: list[float]):
             elements.append(Paragraph(title, h2))
-            table = Table(rows, colWidths=col_widths, repeatRows=1)
+            wrapped_rows = []
+            for idx, row in enumerate(rows):
+                row_style = table_header if idx == 0 else table_cell
+                wrapped_rows.append([Paragraph(str(cell), row_style) for cell in row])
+            table = Table(wrapped_rows, colWidths=col_widths, repeatRows=1)
             table.setStyle(
                 TableStyle(
                     [
@@ -4902,80 +5077,80 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
 
         assumptions_rows = [
             ["Parámetro", "Valor", "Observación"],
-            ["FX CLP/USD", f"{fx_input:,.0f}".replace(",", "."), "Tipo de cambio activo del modelo"],
+            ["FX CLP/USD", f"{base_fx_input:,.0f}".replace(",", "."), "Tipo de cambio activo del modelo"],
             ["Base de valorización pre-money", valuation_basis_label_pdf, "Mecanismo activo para valor pre-money"],
             ["Moneda de inversión Serie A", investment_currency_label, "Moneda visible del bloque 2"],
-            ["Inversión piloto (CLP)", format_clp(inversion_clp_input), "Capital base de entrada al piloto"],
-            ["Inversión piloto (USD)", format_usd(inversion_usd), "Conversión del capital de entrada usando FX"],
-            ["Volumen comercial", f"{volume_input:,.0f}".replace(",", "."), "Supuesto operativo del escenario"],
-            ["EBITDA unitario", format_usd(ebitda_unit_input), "Margen operativo unitario"],
-            ["Múltiplo EBITDA base", f"{multiple_input:.2f}x", "Supuesto usado en bloques 1 a 3"],
+            ["Inversión piloto (CLP)", format_clp(base_inversion_clp_input), "Capital base de entrada al piloto"],
+            ["Inversión piloto (USD)", format_usd(base_inversion_usd), "Conversión del capital de entrada usando FX"],
+            ["Volumen comercial", f"{base_volume_input:,.0f}".replace(",", "."), "Supuesto operativo del escenario base"],
+            ["EBITDA unitario", format_usd(base_ebitda_unit_input), "Margen operativo unitario base"],
+            ["Múltiplo EBITDA base", f"{base_multiple_input:.2f}x", "Supuesto usado en bloques 1 a 3"],
             ["Múltiplo EBITDA Serie B", f"{post_multiple_assumption:.2f}x", "Supuesto heredado para escalamiento"],
             ["Nueva cesión Serie B", f"{post_ronda_assumption:.1%}", "Participación objetivo para nuevos inversionistas"],
-            ["Asignación manual Serie A", "Sí" if alloc_manual_input else "No", "Activa el complemento de valor para IMELSA"],
+            ["Asignación manual Serie A", "Sí" if base_alloc_manual else "No", "Activa el complemento de valor para IMELSA"],
         ]
-        if alloc_manual_input:
+        if base_alloc_manual:
             assumptions_rows.extend(
                 [
-                    ["% IMELSA manual", f"{imelsa_pct_manual_input:.1%}", "Participación fijada manualmente"],
-                    ["% Fluxial manual", f"{fluxial_pct_manual_input:.1%}", "Complemento automático de participación"],
-                    ["Valor complementario (USD)", format_usd(aporte_no_pecuniario_usd), "Aporte adicional reconocido en la Serie A"],
+                    ["% IMELSA manual", f"{base_imelsa_pct:.1%}", "Participación fijada manualmente"],
+                    ["% Fluxial manual", f"{base_fluxial_pct:.1%}", "Complemento automático de participación"],
+                    ["Valor complementario (USD)", format_usd(base_aporte_no_pecuniario_usd), "Aporte adicional reconocido en la Serie A"],
                 ]
             )
         add_table("Supuestos acordados", assumptions_rows, [5.6 * cm, 4.0 * cm, 7.2 * cm])
 
         bloque1_rows = [["KPI", "Valor", "Lectura"]]
-        if valuation_basis_input == "BASE INVERSION + KNOW-HOW":
+        if base_valuation_basis_input == "BASE INVERSION + KNOW-HOW":
             bloque1_rows.extend(
                 [
                     ["Base inversión + know-how", format_clp(total_base_knowhow_clp), "Base patrimonial en CLP"],
-                    ["Base inversión + know-how USD", format_usd(base_en_usd), "Base patrimonial convertida a USD"],
+                    ["Base inversión + know-how USD", format_usd(base_base_en_usd), "Base patrimonial convertida a USD"],
                 ]
             )
         else:
             bloque1_rows.extend(
                 [
-                    ["Múltiplo EBITDA", f"{multiple_input:.2f}x", "Supuesto activo de múltiplo"],
-                    ["EBITDA potencial ciclo inicial", format_usd(ebitda_potencial_multiplicado), "EBITDA potencial multiplicado"],
+                    ["Múltiplo EBITDA", f"{base_multiple_input:.2f}x", "Supuesto activo de múltiplo"],
+                    ["EBITDA potencial ciclo inicial", format_usd(base_ebitda_potencial), "EBITDA potencial multiplicado"],
                 ]
             )
-        bloque1_rows.append(["Valorización Fluxial Hoy (Pre-money)", format_usd(valorizacion_fluxial_hoy), "Resultado del bloque 1"])
+        bloque1_rows.append(["EBITDA proyectado en escenario de escalamiento", format_usd(base_valorizacion_fluxial_hoy), "Resultado del bloque 1"])
         add_table("Sub-bloque 1 - Fundamentos de Creación de Valor", bloque1_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
 
         bloque2_rows = [
             ["KPI", "Valor", "Lectura"],
-            ["Inversión piloto (CLP)", format_clp(inversion_clp_input), "Capital comprometido en pesos"],
-            ["Inversión piloto (USD)", format_usd(inversion_usd), "Capital comprometido convertido a USD"],
+            ["Inversión piloto (CLP)", format_clp(base_inversion_clp_input), "Capital comprometido en pesos"],
+            ["Inversión piloto (USD)", format_usd(base_inversion_usd), "Capital comprometido convertido a USD"],
             ["Post-money Serie A (CLP)", format_clp(post_money_serie_a_clp_pdf), "Post-money expresado en CLP"],
-            ["Post-money Serie A (USD)", format_usd(post_money_serie_a), "Post-money expresado en USD"],
-            ["% IMELSA", f"{imelsa_pct:.1%}", "Participación post ingreso"],
-            ["% Fluxial", f"{fluxial_pct:.1%}", "Participación remanente"],
+            ["Post-money Serie A (USD)", format_usd(base_post_money_serie_a), "Post-money expresado en USD"],
+            ["% IMELSA", f"{base_imelsa_pct:.1%}", "Participación post ingreso"],
+            ["% Fluxial", f"{base_fluxial_pct:.1%}", "Participación remanente"],
         ]
-        if alloc_manual_input:
-            bloque2_rows.append(["Valor complementario (USD)", format_usd(aporte_no_pecuniario_usd), "Aporte adicional incorporado al post-money"])
+        if base_alloc_manual:
+            bloque2_rows.append(["Valor complementario (USD)", format_usd(base_aporte_no_pecuniario_usd), "Aporte adicional incorporado al post-money"])
         add_table("Sub-bloque 2 - Serie A: Inversión Inicial y Validación", bloque2_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
 
         bloque3_rows = [
             ["KPI", "Valor", "Lectura"],
             ["Pre Money actual (USD)", format_usd(base_post_money_serie_a), "Base heredada desde Serie A"],
-            ["EBITDA total", format_usd(ebitda_total), "EBITDA unitario multiplicado por volumen"],
-            ["Valorización post piloto (USD)", format_usd(valor_post_piloto), "EBITDA total multiplicado por el múltiplo activo"],
-            ["Valorización post piloto (CLP)", format_clp(valor_post_piloto_clp), "Referencia equivalente en CLP"],
-            ["Upside vs actual", f"{upside_pct:.1%}", "Crecimiento de valorización post piloto respecto de Pre Money actual"],
-            ["Valor por 50% post piloto", format_usd(valor_imelsa_post), "Valor implícito de una participación equivalente al 50% post piloto"],
+            ["EBITDA total", format_usd(post_ebitda_total), "EBITDA unitario multiplicado por volumen"],
+            ["Valorización post piloto (USD)", format_usd(post_valor_post_piloto), "EBITDA total multiplicado por el múltiplo activo"],
+            ["Valorización post piloto (CLP)", format_clp(post_valor_post_piloto_clp), "Referencia equivalente en CLP"],
+            ["Upside vs actual", f"{post_upside_pct:.1%}", "Crecimiento de valorización post piloto respecto de Pre Money actual"],
+            ["Valor por 50% post piloto", format_usd(post_valor_imelsa_post), "Valor implícito de una participación equivalente al 50% post piloto"],
         ]
         add_table("Sub-bloque 3 - Valorización Post-Validación", bloque3_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
 
         bloque4_rows = [
             ["KPI", "Valor", "Lectura"],
-            ["Valorización base Serie B", format_usd(valor_post_piloto), "Pre-money sugerido para la segunda ronda"],
-            ["Capital Serie B (USD)", format_usd(capital_raise), "Capital implícito a levantar"],
-            ["Capital Serie B (CLP)", format_clp(capital_raise_clp), "Referencia equivalente en CLP"],
-            ["Post-money Serie B (USD)", format_usd(post_money_serie_b), "Valorización posterior al cierre"],
-            ["Post-money Serie B (CLP)", format_clp(post_money_serie_b_clp), "Referencia equivalente en CLP"],
-            ["% remanente socios actuales", f"{pct_remanente:.1%}", "Participación conjunta post ronda"],
-            ["% Fluxial post ronda", f"{fluxial_post_b:.1%}", "Participación final de Fluxial"],
-            ["% IMELSA post ronda", f"{imelsa_post_b:.1%}", "Participación final de IMELSA"],
+            ["Valorización base Serie B", format_usd(post_valor_post_piloto), "Pre-money sugerido para la segunda ronda"],
+            ["Capital Serie B (USD)", format_usd(post_capital_raise), "Capital implícito a levantar"],
+            ["Capital Serie B (CLP)", format_clp(post_capital_raise_clp), "Referencia equivalente en CLP"],
+            ["Post-money Serie B (USD)", format_usd(post_money_serie_b_pdf), "Valorización posterior al cierre"],
+            ["Post-money Serie B (CLP)", format_clp(post_money_serie_b_clp_pdf), "Referencia equivalente en CLP"],
+            ["% remanente socios actuales", f"{post_pct_remanente:.1%}", "Participación conjunta post ronda"],
+            ["% Fluxial post ronda", f"{post_fluxial_post_b:.1%}", "Participación final de Fluxial"],
+            ["% IMELSA post ronda", f"{post_imelsa_post_b:.1%}", "Participación final de IMELSA"],
         ]
         add_table("Sub-bloque 4 - Serie B: Escalamiento Comercial", bloque4_rows, [6.2 * cm, 4.1 * cm, 6.5 * cm])
 
@@ -5015,68 +5190,19 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                 """,
                 unsafe_allow_html=True,
             )
-            eerr_headers = [clean_sheet_cell(v) for v in df_eerrv2.iloc[1, 1:8].tolist()]
-            eerr_data = df_eerrv2.iloc[2:10, 1:8].copy()
-            eerr_data.columns = eerr_headers
-            eerr_data = eerr_data.applymap(clean_sheet_cell)
-            cash_headers = [clean_sheet_cell(v) for v in df_eerrv2.iloc[1, 1:8].tolist()]
-            cash_data = df_eerrv2.iloc[12:23, 1:8].copy()
-            cash_data.columns = cash_headers
-            cash_data = cash_data.applymap(clean_sheet_cell)
-            kpi_headers = [clean_sheet_cell(v) for v in df_eerrv2.iloc[1, 9:11].tolist()]
-            kpi_data = df_eerrv2.iloc[2:10, 9:11].copy()
-            kpi_data.columns = kpi_headers
-            kpi_data = kpi_data.applymap(clean_sheet_cell)
-            kpi_map = {clean_sheet_cell(row[kpi_headers[0]]): clean_sheet_cell(row[kpi_headers[1]]) for _, row in kpi_data.iterrows() if clean_sheet_cell(row[kpi_headers[0]])}
-            precio_venta_turbina = get_first_model_value(
-                model_map,
-                [
-                    "Precio venta / turbina",
-                    "Precio venta/turbina",
-                    "Precio venta turbina",
-                ],
+            eerr_payload = build_eerrv2_payload(
+                df_eerrv2,
+                tuple(sorted((str(k), "" if pd.isna(v) else str(v)) for k, v in model_map.items())),
+                ebitda_unit_default,
             )
-            costo_estimado_turbina = get_first_model_value(
-                model_map,
-                [
-                    "Costo estimado / turbina",
-                    "Costo estimado/turbina",
-                    "Costo estimado turbina",
-                ],
-            )
-            ebitda_unitario_val = get_first_model_value(
-                model_map,
-                [
-                    "EBITDA unitario",
-                    "EBITDA unitario de referencia",
-                ],
-                default=ebitda_unit_default,
-            )
-            capex_inicial_eerr = parse_model_number(clean_sheet_cell(df_eerrv2.iloc[14, 2])) if df_eerrv2.shape[0] > 14 and df_eerrv2.shape[1] > 2 else 0.0
-
-            eerr_numeric = eerr_data.copy()
-            series_cols = [c for c in eerr_numeric.columns if c != "Partida"]
-            for col in series_cols:
-                eerr_numeric[col] = eerr_numeric[col].apply(parse_model_number)
-            row_lookup = {normalize_key(clean_sheet_cell(r["Partida"])): r for _, r in eerr_numeric.iterrows()}
-            cash_numeric = cash_data.copy()
-            cash_series_cols = [c for c in cash_numeric.columns if c != "Partida"]
-            for col in cash_series_cols:
-                cash_numeric[col] = cash_numeric[col].apply(parse_model_number)
-            cash_row_lookup = {normalize_key(clean_sheet_cell(r["Partida"])): r for _, r in cash_numeric.iterrows()}
-            years = [c for c in series_cols]
-            chart_df = pd.DataFrame({"Año": years})
-            ingresos_row = row_lookup.get(normalize_key("Ingresos (USD)"), {})
-            ebitda_row = row_lookup.get(normalize_key("EBITDA (USD)"), {})
-            caja_row = cash_row_lookup.get(normalize_key("Flujo de caja neto"))
-            if not isinstance(caja_row, pd.Series):
-                caja_row = cash_row_lookup.get(normalize_key("Flujo caja neto"), {})
-            chart_df["Ingresos"] = [ingresos_row.get(y, 0.0) if isinstance(ingresos_row, pd.Series) else 0.0 for y in years]
-            chart_df["EBITDA"] = [ebitda_row.get(y, 0.0) if isinstance(ebitda_row, pd.Series) else 0.0 for y in years]
-            chart_df["Caja_neta"] = [caja_row.get(y, 0.0) if isinstance(caja_row, pd.Series) else 0.0 for y in years]
-            chart_df["Ingresos_MM"] = chart_df["Ingresos"] / 1e6
-            chart_df["EBITDA_MM"] = chart_df["EBITDA"] / 1e6
-            chart_df["Caja_MM"] = chart_df["Caja_neta"] / 1e6
+            eerr_data = eerr_payload["eerr_data"]
+            cash_data = eerr_payload["cash_data"]
+            kpi_map = eerr_payload["kpi_map"]
+            precio_venta_turbina = eerr_payload["precio_venta_turbina"]
+            costo_estimado_turbina = eerr_payload["costo_estimado_turbina"]
+            ebitda_unitario_val = eerr_payload["ebitda_unitario_val"]
+            capex_inicial_eerr = eerr_payload["capex_inicial_eerr"]
+            chart_df = eerr_payload["chart_df"]
 
             eerr_styler = style_engineering_table(eerr_data).apply(
                 lambda row: [
@@ -5575,9 +5701,49 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
 
     csv_valorizacion = df_valorizacion.to_csv(index=False).encode("utf-8-sig")
     if REPORTLAB_AVAILABLE:
+        pdf_signature = (
+            data_refresh_nonce,
+            int(round(float(base_fx_input or 0))),
+            str(base_investment_currency_input),
+            int(round(float(base_inversion_clp_input or 0))),
+            int(round(float(base_volume_input or 0))),
+            int(round(float(base_ebitda_unit_input or 0))),
+            round(float(base_multiple_input or 0), 4),
+            round(float(post_ronda_pct_input or 0), 6),
+            str(base_valuation_basis_input),
+            bool(base_alloc_manual),
+            round(float(base_fluxial_pct or 0), 6),
+            round(float(base_imelsa_pct or 0), 6),
+            round(float(total_base_knowhow_clp or 0), 2),
+            round(float(base_base_en_usd or 0), 2),
+            round(float(base_ebitda_potencial or 0), 2),
+            round(float(base_valorizacion_fluxial_hoy or 0), 2),
+            round(float(base_inversion_usd or 0), 2),
+            round(float(base_post_money_serie_a or 0), 2),
+            int(round(float(post_fx_input or 0))),
+            str(post_investment_currency_input),
+            int(round(float(post_volume_input or 0))),
+            int(round(float(post_ebitda_unit_input or 0))),
+            round(float(post_multiple_input or 0), 4),
+            round(float(post_ebitda_total or 0), 2),
+            round(float(post_valor_post_piloto or 0), 2),
+            round(float(post_upside_pct or 0), 6),
+            round(float(post_valor_imelsa_post or 0), 2),
+            round(float(post_capital_raise or 0), 2),
+            round(float(post_money_serie_b_pdf or 0), 2),
+            round(float(post_pct_remanente or 0), 6),
+            round(float(post_fluxial_post_b or 0), 6),
+            round(float(post_imelsa_post_b or 0), 6),
+            round(float(base_aporte_no_pecuniario_usd or 0), 2),
+        )
+        pdf_sig_key = widget_key("cached_supuestos_pdf_signature")
+        pdf_data_key = widget_key("cached_supuestos_pdf_bytes")
+        if st.session_state.get(pdf_sig_key) != pdf_signature:
+            st.session_state[pdf_data_key] = build_valorizacion_supuestos_pdf()
+            st.session_state[pdf_sig_key] = pdf_signature
         pdf_export_slot.download_button(
             label="📄 Descargar PDF de supuestos",
-            data=build_valorizacion_supuestos_pdf(),
+            data=st.session_state[pdf_data_key],
             file_name="Supuestos_Modelo_Valorizacion.pdf",
             mime="application/pdf",
             key=widget_key("download_supuestos_pdf"),

@@ -1137,6 +1137,34 @@ def apply_engineering_chart_typography(
     return fig
 
 
+def render_single_select_pills_compat(
+    label: str,
+    options: list[str],
+    *,
+    default: str,
+    key: str,
+    format_func=None,
+):
+    if hasattr(st, "pills"):
+        return st.pills(
+            label,
+            options=options,
+            default=default,
+            selection_mode="single",
+            key=key,
+            format_func=format_func,
+        )
+    if key not in st.session_state or st.session_state[key] not in options:
+        st.session_state[key] = default if default in options else options[0]
+    return st.radio(
+        label,
+        options=options,
+        horizontal=True,
+        key=key,
+        format_func=format_func,
+    )
+
+
 def render_inputs_sm_kpi_cards(tabla_sm: pd.DataFrame):
     if tabla_sm is None or tabla_sm.empty:
         return
@@ -3031,11 +3059,10 @@ def render_resumen_content(
                     }
                     return mapa.get(opt, opt)
 
-                item_sel = st.pills(
+                item_sel = render_single_select_pills_compat(
                     "Filtrar por ítem:",
                     options=opciones,
                     default="Todas",
-                    selection_mode="single",
                     key=f"{key_prefix}timeline_radio_item_cat",
                     format_func=_fmt_item,
                 )
@@ -6040,11 +6067,10 @@ if False:
                     }
                     return mapa.get(opt, opt)
     
-                item_sel = st.pills(
+                item_sel = render_single_select_pills_compat(
                     "Filtrar por ítem:",
                     options=opciones,
                     default="Todas",
-                    selection_mode="single",
                     key="timeline_radio_item_cat",
                     format_func=_fmt_item,
                 )

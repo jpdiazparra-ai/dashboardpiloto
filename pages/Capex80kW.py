@@ -217,7 +217,7 @@ def render_inputs_main_hero() -> None:
 DASHBOARD_FINANCIERO_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vQmVzOg9X7VfxAmOImXHuMvyH4dQmxbFL3DIBqOubi32jKLncgqBEBwnl6j0dXWsm5FkRAcrY4y8BD2/"
-    "pub?gid=1596174884&single=true&output=csv"
+    "pub?gid=1417148670&single=true&output=csv"
 )
 RESTANTE_PILOTO_10KW_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"

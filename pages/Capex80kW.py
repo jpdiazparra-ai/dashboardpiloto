@@ -11,6 +11,7 @@ import plotly.io as pio
 import re
 import unicodedata
 import math
+import html
 import plotly.graph_objects as go
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pathlib import Path
@@ -671,6 +672,86 @@ def style_engineering_table(df: pd.DataFrame, header_color: str = "#2C5783", row
             ],
             axis=1,
         )
+    )
+
+
+def render_engineering_html_table(df: pd.DataFrame, *, bold_labels: set[str] | None = None, height: int = 360) -> None:
+    bold_labels = bold_labels or set()
+    header_html = "".join(f"<th>{html.escape(str(col))}</th>" for col in df.columns)
+    body_rows = []
+    for idx, (_, row) in enumerate(df.iterrows()):
+        row_class = "eng-html-row-alt" if idx % 2 == 0 else ""
+        label = clean_sheet_cell(row.iloc[0]) if len(row) > 0 else ""
+        emphasis_class = " eng-html-strong" if label in bold_labels else ""
+        cells = "".join(
+            f'<td class="{emphasis_class.strip()}">{html.escape(str("" if pd.isna(val) else val))}</td>'
+            for val in row
+        )
+        body_rows.append(f'<tr class="{row_class}">{cells}</tr>')
+
+    st.markdown(
+        f"""
+        <style>
+        .eng-html-table-wrap {{
+            max-height:{height}px;
+            overflow:auto;
+            border:1px solid rgba(203,213,225,.65);
+            border-radius:14px;
+            background:#ffffff;
+        }}
+        .eng-html-table {{
+            width:100%;
+            border-collapse:separate;
+            border-spacing:0;
+            font-size:12px;
+            color:#334155;
+        }}
+        .eng-html-table th,
+        .eng-html-table td {{
+            padding:5px 8px;
+            border-right:1px solid rgba(203,213,225,.65);
+            border-bottom:1px solid rgba(203,213,225,.65);
+            text-align:center;
+            white-space:nowrap;
+        }}
+        .eng-html-table th:first-child,
+        .eng-html-table td:first-child {{
+            text-align:left;
+        }}
+        .eng-html-table th {{
+            position:sticky;
+            top:0;
+            z-index:1;
+            background:#ffffff;
+            color:#7c8596;
+            font-weight:700;
+            font-size:11px;
+        }}
+        .eng-html-table th:last-child,
+        .eng-html-table td:last-child {{
+            border-right:none;
+        }}
+        .eng-html-table tr:last-child td {{
+            border-bottom:none;
+        }}
+        .eng-html-row-alt td {{
+            background:#EAF6FF;
+        }}
+        .eng-html-strong {{
+            font-weight:900;
+            color:#0f172a;
+        }}
+        </style>
+        <div class="eng-html-table-wrap">
+          <table class="eng-html-table">
+            <thead><tr>{header_html}</tr></thead>
+            <tbody>
+              {''.join(body_rows)}
+            </tbody>
+          </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -5204,19 +5285,15 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
             capex_inicial_eerr = eerr_payload["capex_inicial_eerr"]
             chart_df = eerr_payload["chart_df"]
 
-            eerr_styler = style_engineering_table(eerr_data).apply(
-                lambda row: [
-                    "font-weight: 800;" if clean_sheet_cell(row.iloc[0]) in {"Margen bruto (USD)", "EBITDA (USD)"} else ""
-                    for _ in row
-                ],
-                axis=1,
-            )
-
             col_eerr_1, col_eerr_2 = st.columns([1.7, 1])
             with col_eerr_1:
                 st.markdown('<div class="eng-section-label">Lectura financiera integrada</div>', unsafe_allow_html=True)
                 st.markdown('<div class="eng-body-title">Proyección Financiera Integrada " Etapa comercial"</div>', unsafe_allow_html=True)
-                st.dataframe(eerr_styler, hide_index=True, use_container_width=True, height=360)
+                render_engineering_html_table(
+                    eerr_data,
+                    bold_labels={"Margen bruto (USD)", "EBITDA (USD)"},
+                    height=360,
+                )
             with col_eerr_2:
                 st.markdown('<div class="eng-section-label">Drivers técnicos del modelo</div>', unsafe_allow_html=True)
                 st.markdown('<div class="eng-body-title">Drivers unitarios del modelo</div>', unsafe_allow_html=True)
@@ -5232,14 +5309,11 @@ def render_valorizacion_module_content(key_prefix: str = "val_"):
                 kpi_card("CAPEX inicial", format_usd(capex_inicial_eerr), "Valor base tomado de EERRv2 celda C15.", variant="sky")
 
             st.markdown('<div class="eng-body-title">Flujo de Caja del Proyecto y Estrategia de Reinversión</div>', unsafe_allow_html=True)
-            cash_styler = style_engineering_table(cash_data).apply(
-                lambda row: [
-                    "font-weight: 800;" if clean_sheet_cell(row.iloc[0]) in {"EBITDA", "CAPEX inicial", "Flujo de caja neto"} else ""
-                    for _ in row
-                ],
-                axis=1,
+            render_engineering_html_table(
+                cash_data,
+                bold_labels={"EBITDA", "Flujo de caja neto"},
+                height=420,
             )
-            st.dataframe(cash_styler, hide_index=True, use_container_width=True, height=420)
             st.markdown('<div class="eng-section-label">Desempeño consolidado</div>', unsafe_allow_html=True)
             st.markdown('<div class="eng-body-title">Desempeño Financiero y Operativo del Proyecto</div>', unsafe_allow_html=True)
             mini_cards = [

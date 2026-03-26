@@ -222,12 +222,17 @@ DASHBOARD_FINANCIERO_CSV_URL_DEFAULT = (
 RESTANTE_PILOTO_10KW_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vQmVzOg9X7VfxAmOImXHuMvyH4dQmxbFL3DIBqOubi32jKLncgqBEBwnl6j0dXWsm5FkRAcrY4y8BD2/"
-    "pub?gid=621130518&single=true&output=csv"
+    "pub?gid=1167653476&single=true&output=csv"
 )
 BULLET_CONTEXTO_10KW_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vQfQcSn40boiOyRvYeX1j5SO2O9w3WoA6DkOEMxxf85v-WiWXuMC-uyBWb3-ff82pUfk1cSaBnmrcqU/"
     "pub?gid=632353264&single=true&output=csv"
+)
+KNOWHOW_RESUMEN_CSV_URL_DEFAULT = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vQmVzOg9X7VfxAmOImXHuMvyH4dQmxbFL3DIBqOubi32jKLncgqBEBwnl6j0dXWsm5FkRAcrY4y8BD2/"
+    "pub?gid=584994007&single=true&output=csv"
 )
 GANTT_PROJECT_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"
@@ -509,6 +514,11 @@ def load_valorizacion_raw_data(url: str, refresh_nonce: int = 0) -> pd.DataFrame
 
 
 @st.cache_data(show_spinner=True, ttl=120)
+def load_knowhow_resumen_raw_data(url: str, refresh_nonce: int = 0) -> pd.DataFrame:
+    return pd.read_csv(url, dtype=str, header=None)
+
+
+@st.cache_data(show_spinner=True, ttl=120)
 def load_eerrv2_data(url: str, refresh_nonce: int = 0) -> pd.DataFrame:
     return pd.read_csv(url, dtype=str, header=None)
 
@@ -735,6 +745,99 @@ def get_first_model_value(model_map: dict, candidates: list[str], default=0.0) -
     return float(default)
 
 
+def get_knowhow_resumen_payload() -> dict:
+    payload = {
+        "title": "Know-how técnico derivado de la pestaña Pruebas",
+        "subtitle": "",
+        "assumptions": [],
+        "multipliers": [],
+        "kpis": {},
+        "family_df": pd.DataFrame(),
+        "criteria": [],
+    }
+    try:
+        df_raw = load_knowhow_resumen_raw_data(KNOWHOW_RESUMEN_CSV_URL_DEFAULT, refresh_nonce=data_refresh_nonce)
+    except Exception:
+        return payload
+
+    if df_raw is None or df_raw.empty:
+        return payload
+
+    def cell(r: int, c: int) -> str:
+        if r >= len(df_raw.index) or c >= len(df_raw.columns):
+            return ""
+        return clean_sheet_cell(df_raw.iat[r, c])
+
+    payload["title"] = cell(0, 0) or payload["title"]
+    payload["subtitle"] = cell(1, 0)
+
+    assumptions = []
+    for r in range(4, min(len(df_raw.index), 12)):
+        label = cell(r, 0)
+        value = cell(r, 1)
+        if label:
+            assumptions.append({"label": label, "value": value})
+    payload["assumptions"] = assumptions
+
+    multipliers = []
+    for r in range(4, min(len(df_raw.index), 12)):
+        label = cell(r, 4)
+        value = cell(r, 5)
+        if label:
+            multipliers.append({"label": label, "value": value})
+    payload["multipliers"] = multipliers
+
+    kpis = {}
+    for r in range(4, min(len(df_raw.index), 12)):
+        label = cell(r, 7)
+        value = cell(r, 8)
+        if label:
+            kpis[label] = value
+    payload["kpis"] = kpis
+
+    header_idx = None
+    for r in range(len(df_raw.index)):
+        if normalize_key(cell(r, 0)) == normalize_key("Familia"):
+            header_idx = r
+            break
+
+    family_rows = []
+    if header_idx is not None:
+        for r in range(header_idx + 1, len(df_raw.index)):
+            familia = cell(r, 0)
+            if not familia:
+                break
+            family_rows.append(
+                {
+                    "Familia": familia,
+                    "# partidas": int(parse_model_number(cell(r, 1)) or 0),
+                    "Monto origen (CLP)": float(parse_money_clp_robusto(cell(r, 2)) or 0.0),
+                    "Horas modeladas": float(parse_model_number(cell(r, 3)) or 0.0),
+                    "Valor modelado (CLP)": float(parse_money_clp_robusto(cell(r, 4)) or 0.0),
+                    "% valor modelado": float(parse_model_percent(cell(r, 5)) or 0.0),
+                }
+            )
+    if family_rows:
+        family_df = pd.DataFrame(family_rows)
+        family_df["Valor modelado (MM CLP)"] = family_df["Valor modelado (CLP)"] / 1_000_000.0
+        family_df = family_df.sort_values("Valor modelado (CLP)", ascending=False).reset_index(drop=True)
+        payload["family_df"] = family_df
+
+    criteria_idx = None
+    for r in range(len(df_raw.index)):
+        if normalize_key(cell(r, 7)) == normalize_key("Criterio de revisión"):
+            criteria_idx = r
+            break
+    criteria = []
+    if criteria_idx is not None:
+        for r in range(criteria_idx + 1, min(len(df_raw.index), criteria_idx + 6)):
+            text = cell(r, 7)
+            if text:
+                criteria.append(text)
+    payload["criteria"] = criteria
+    return payload
+
+
 def build_direccion_mensual(df_dir: pd.DataFrame, horizonte_meses: int = 15) -> pd.DataFrame:
     """Expande la hoja de dirección a una serie mensual respetando mes de inicio y duración."""
     if df_dir is None or df_dir.empty:
@@ -932,56 +1035,79 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
         df_val_raw = load_valorizacion_raw_data(VALORIZACION_CSV_URL_DEFAULT, refresh_nonce=data_refresh_nonce)
         if df_val_raw.shape[0] > 6 and df_val_raw.shape[1] > 6:
             capacidades_externo = float(parse_money_clp_robusto(clean_sheet_cell(df_val_raw.iloc[5, 6])) or 0.0)
-            know_how_fw = float(parse_money_clp_robusto(clean_sheet_cell(df_val_raw.iloc[6, 6])) or 0.0)
     except Exception:
         capacidades_externo = 0.0
-        know_how_fw = 0.0
+    knowhow_payload = get_knowhow_resumen_payload()
+    know_how_fw = float(
+        parse_money_clp_robusto(knowhow_payload.get("kpis", {}).get("Valor know-how modelado", ""))
+        or 0.0
+    )
+    if know_how_fw <= 0:
+        try:
+            if df_val_raw.shape[0] > 6 and df_val_raw.shape[1] > 6:
+                know_how_fw = float(parse_money_clp_robusto(clean_sheet_cell(df_val_raw.iloc[6, 6])) or 0.0)
+        except Exception:
+            know_how_fw = 0.0
 
     fin_nav_key = "inputs_financiero_asset_sel"
     if fin_nav_key not in st.session_state:
         st.session_state[fin_nav_key] = None
 
+    summary_grid_template = "1.45fr 0.85fr 0.85fr" if capacidades_externo > 0 else "1fr 1fr"
+    selector_widths = [1.45, 0.85, 0.85] if capacidades_externo > 0 else [1, 1]
+
     st.markdown(
-        """
+        f"""
         <style>
-        .inputs-fin-summary{display:grid;grid-template-columns:1.45fr .85fr .85fr;gap:16px;margin:10px 0 18px}
-        @media (max-width:1400px){.inputs-fin-summary{grid-template-columns:1fr;}}
+        .inputs-fin-summary{{display:grid;grid-template-columns:{summary_grid_template};gap:16px;margin:10px 0 18px}}
+        @media (max-width:1400px){{.inputs-fin-summary{{grid-template-columns:1fr;}}}}
         .inputs-fin-hero,
-        .inputs-fin-side{
+        .inputs-fin-side{{
             border-radius:20px;
             padding:18px 18px 16px 18px;
             background:linear-gradient(180deg,#f8fafc 0%,#ffffff 68%);
             border:1px solid rgba(148,163,184,.30);
             box-shadow:0 8px 18px rgba(15,23,42,.06);
-        }
-        .inputs-fin-hero{
+        }}
+        .inputs-fin-hero{{
             background:linear-gradient(90deg,#EFF8FF 0%,#DFF4FF 42%,#C6ECFF 100%);
-        }
-        .inputs-fin-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-        .inputs-fin-ico{
+        }}
+        .inputs-fin-row{{display:flex;align-items:center;gap:10px;margin-bottom:10px}}
+        .inputs-fin-ico{{
             width:36px;height:36px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;
             background:#ecfeff;border:1px solid rgba(14,165,164,.25);font-size:22px
-        }
-        .inputs-fin-h{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:.02em}
-        .inputs-fin-v{font-size:28px;font-weight:900;color:#0f172a;line-height:1.05;margin-bottom:8px}
-        .inputs-fin-hero .inputs-fin-v{font-size:36px}
-        .inputs-fin-sub{display:flex;gap:8px;flex-wrap:wrap}
-        .inputs-fin-chip{
+        }}
+        .inputs-fin-h{{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:.02em}}
+        .inputs-fin-v{{font-size:28px;font-weight:900;color:#0f172a;line-height:1.05;margin-bottom:8px}}
+        .inputs-fin-hero .inputs-fin-v{{font-size:36px}}
+        .inputs-fin-sub{{display:flex;gap:8px;flex-wrap:wrap}}
+        .inputs-fin-chip{{
             display:inline-block;font-size:12px;padding:5px 10px;border-radius:999px;
             border:1px solid rgba(165,180,252,.45);background:#eef2ff;color:#3730a3
-        }
-        .inputs-fin-note{font-size:13px;line-height:1.5;color:#475569;margin-top:6px}
-        .inputs-fin-selector-row{
+        }}
+        .inputs-fin-note{{font-size:13px;line-height:1.5;color:#475569;margin-top:6px}}
+        .inputs-fin-selector-row{{
             display:grid;
-            grid-template-columns:1.45fr .85fr .85fr;
+            grid-template-columns:{summary_grid_template};
             gap:16px;
             margin:0 0 18px 0;
-        }
-        @media (max-width:1400px){.inputs-fin-selector-row{grid-template-columns:1fr;}}
+        }}
+        @media (max-width:1400px){{.inputs-fin-selector-row{{grid-template-columns:1fr;}}}}
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+    capacidades_card_html = ""
+    if capacidades_externo > 0:
+        capacidades_card_html = f"""
+      <div class="inputs-fin-side">
+        <div class="inputs-fin-row"><div class="inputs-fin-ico">🧠</div><div class="inputs-fin-h">Capacidades externo</div></div>
+        <div class="inputs-fin-v">{html.escape(format_clp(capacidades_externo))}</div>
+        <div class="inputs-fin-sub"><span class="inputs-fin-chip">Valorización FW · G6</span></div>
+        <div class="inputs-fin-note">Capacidades complementarias valorizadas fuera del gasto ejecutado directo.</div>
+      </div>
+        """
 
     cards = f"""
     <div class="inputs-fin-summary">
@@ -994,12 +1120,7 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
         </div>
         <div class="inputs-fin-note">Inversión efectivamente ejecutada para construir y poner en forma operativa el activo tecnológico.</div>
       </div>
-      <div class="inputs-fin-side">
-        <div class="inputs-fin-row"><div class="inputs-fin-ico">🧠</div><div class="inputs-fin-h">Capacidades externo</div></div>
-        <div class="inputs-fin-v">{html.escape(format_clp(capacidades_externo))}</div>
-        <div class="inputs-fin-sub"><span class="inputs-fin-chip">Valorización FW · G6</span></div>
-        <div class="inputs-fin-note">Capacidades complementarias valorizadas fuera del gasto ejecutado directo.</div>
-      </div>
+      {capacidades_card_html}
       <div class="inputs-fin-side">
         <div class="inputs-fin-row"><div class="inputs-fin-ico">⚙️</div><div class="inputs-fin-h">Know-how FW</div></div>
         <div class="inputs-fin-v">{html.escape(format_clp(know_how_fw))}</div>
@@ -1010,13 +1131,11 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
     """
     st.markdown(cards, unsafe_allow_html=True)
 
-    st.markdown('<div class="inputs-fin-selector-row">', unsafe_allow_html=True)
-    selector_cards = [
-        ("costo_ejecutado", "Costo Ejecutado"),
-        ("capacidades_externas", "Capacidades externo"),
-        ("know_how_fw", "Know-how FW"),
-    ]
-    selector_cols = st.columns([1.45, 0.85, 0.85])
+    selector_cards = [("costo_ejecutado", "Costo Ejecutado")]
+    if capacidades_externo > 0:
+        selector_cards.append(("capacidades_externas", "Capacidades externo"))
+    selector_cards.append(("know_how_fw", "Know-how FW"))
+    selector_cols = st.columns(selector_widths)
     for idx, (value, _label) in enumerate(selector_cards):
         is_active = st.session_state.get(fin_nav_key) == value
         with selector_cols[idx]:
@@ -1027,13 +1146,138 @@ def render_inputs_financial_main_kpis(df_in: pd.DataFrame):
                 type="primary" if is_active else "secondary",
                 on_click=lambda selected=value: st.session_state.__setitem__(fin_nav_key, selected),
             )
-    st.markdown("</div>", unsafe_allow_html=True)
     return {
         "monto_total": monto_total,
         "capacidades_externo": capacidades_externo,
         "know_how_fw": know_how_fw,
         "selected": st.session_state.get(fin_nav_key),
     }
+
+
+def render_inputs_knowhow_fw_detail():
+    import html
+
+    payload = get_knowhow_resumen_payload()
+    family_df = payload.get("family_df", pd.DataFrame()).copy()
+    if family_df.empty:
+        st.info("La pestaña `KnowHow_Resumen` no contiene información suficiente para construir el detalle.")
+        return
+
+    kpis = payload.get("kpis", {})
+    assumptions = payload.get("assumptions", [])
+    multipliers = payload.get("multipliers", [])
+    criteria = payload.get("criteria", [])
+
+    knowhow_total = float(parse_money_clp_robusto(kpis.get("Valor know-how modelado", "")) or family_df["Valor modelado (CLP)"].sum())
+    horas_modeladas = float(parse_model_number(kpis.get("Horas modeladas", "")) or family_df["Horas modeladas"].sum())
+    n_partidas = int(parse_model_number(kpis.get("# partidas", "")) or family_df["# partidas"].sum())
+
+    kk1, kk2, kk3 = st.columns(3)
+    with kk1:
+        kpi_card("Know-how modelado", format_clp(knowhow_total), "Valor técnico reconocido desde KnowHow_Resumen.")
+    with kk2:
+        kpi_card("Horas modeladas", f"{horas_modeladas:,.0f}".replace(",", "."), "Carga técnica valorizada en el modelo.")
+    with kk3:
+        kpi_card("Partidas atribuidas", f"{n_partidas:,.0f}".replace(",", "."), "Partidas trazadas a conocimiento técnico.")
+
+    fig_knowhow = px.bar(
+        family_df.sort_values("Valor modelado (CLP)", ascending=True),
+        x="Valor modelado (MM CLP)",
+        y="Familia",
+        orientation="h",
+        color="Familia",
+        color_discrete_sequence=["#0F766E", "#2563EB", "#64748B", "#0EA5A4", "#2C5783", "#94A3B8"],
+        text=family_df.sort_values("Valor modelado (CLP)", ascending=True)["% valor modelado"].map(lambda v: f"{v * 100:.1f}%"),
+        title="Diseño de ingeniería valorizado por familia de know-how",
+    )
+    fig_knowhow.update_traces(
+        textposition="inside",
+        insidetextanchor="middle",
+        marker=dict(line=dict(color="rgba(255,255,255,0.9)", width=1.1)),
+        customdata=np.stack(
+            [
+                family_df.sort_values("Valor modelado (CLP)", ascending=True)["# partidas"],
+                family_df.sort_values("Valor modelado (CLP)", ascending=True)["Horas modeladas"],
+                family_df.sort_values("Valor modelado (CLP)", ascending=True)["Monto origen (CLP)"],
+            ],
+            axis=-1,
+        ),
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Valor modelado: %{x:.2f} MM CLP<br>"
+            "Partidas: %{customdata[0]:.0f}<br>"
+            "Horas modeladas: %{customdata[1]:.0f}<br>"
+            "Monto origen: $%{customdata[2]:,.0f}<extra></extra>"
+        ),
+    )
+    fig_knowhow.update_layout(
+        showlegend=False,
+        xaxis_title="Valor modelado (MM CLP)",
+        yaxis_title="Familia técnica",
+        margin=dict(l=10, r=10, t=58, b=20),
+        height=420,
+        bargap=0.24,
+        plot_bgcolor="white",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    apply_engineering_chart_typography(fig_knowhow, title_size=20, body_size=13, tick_size=12, legend_size=11)
+    fig_knowhow.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.20)", zeroline=False, ticksuffix=" MM")
+    fig_knowhow.update_yaxes(showgrid=False)
+
+    col_left, col_right = st.columns([1.3, 0.9])
+    with col_left:
+        st.plotly_chart(fig_knowhow, use_container_width=True, key="inputs_knowhow_family_chart")
+        table_df = family_df.copy()
+        table_df["Monto origen (CLP)"] = table_df["Monto origen (CLP)"].apply(format_clp)
+        table_df["Valor modelado (CLP)"] = table_df["Valor modelado (CLP)"].apply(format_clp)
+        table_df["Horas modeladas"] = table_df["Horas modeladas"].map(lambda v: f"{v:,.0f}".replace(",", "."))
+        table_df["% valor modelado"] = table_df["% valor modelado"].map(lambda v: f"{v * 100:.1f}%")
+        st.markdown("#### Resumen por familia de know-how")
+        st.dataframe(
+            style_engineering_table(
+                table_df[["Familia", "# partidas", "Monto origen (CLP)", "Horas modeladas", "Valor modelado (CLP)", "% valor modelado"]],
+                header_color="#0F766E",
+                row_color="#ECFDF5",
+            ),
+            hide_index=True,
+            use_container_width=True,
+            height=320,
+        )
+    with col_right:
+        st.markdown("#### Supuestos editables")
+        if assumptions:
+            assump_df = pd.DataFrame(assumptions).rename(columns={"label": "Variable", "value": "Valor"})
+            st.dataframe(
+                style_engineering_table(assump_df, header_color="#2C5783", row_color="#EAF6FF"),
+                hide_index=True,
+                use_container_width=True,
+                height=246,
+            )
+        st.markdown("#### Multiplicadores técnicos")
+        if multipliers:
+            mult_df = pd.DataFrame(multipliers).rename(columns={"label": "Familia", "value": "Multiplicador"})
+            st.dataframe(
+                style_engineering_table(mult_df, header_color="#475569", row_color="#F8FAFC"),
+                hide_index=True,
+                use_container_width=True,
+                height=246,
+            )
+        if criteria:
+            criteria_html = "".join(f"<li>{html.escape(text)}</li>" for text in criteria)
+            st.markdown(
+                f"""
+                <div style="border-radius:18px;padding:16px 18px;background:linear-gradient(180deg,#fff7ed 0%,#fffbeb 100%);
+                            border:1px solid rgba(245,158,11,.25);margin-top:8px;">
+                  <div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#92400e;margin-bottom:8px;">
+                    Criterio de revisión
+                  </div>
+                  <ul style="margin:0 0 0 18px;padding:0;color:#7c2d12;line-height:1.55;">
+                    {criteria_html}
+                  </ul>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def make_inputs_suministro_chart(df_in: pd.DataFrame):
@@ -1952,10 +2196,19 @@ def get_valor_activo_tecnologico_construido() -> tuple[float, float, float, floa
         df_val_raw = load_valorizacion_raw_data(VALORIZACION_CSV_URL_DEFAULT, refresh_nonce=data_refresh_nonce)
         if df_val_raw.shape[0] > 6 and df_val_raw.shape[1] > 6:
             capacidades_externo = float(parse_money_clp_robusto(clean_sheet_cell(df_val_raw.iloc[5, 6])) or 0.0)
-            know_how_fw = float(parse_money_clp_robusto(clean_sheet_cell(df_val_raw.iloc[6, 6])) or 0.0)
     except Exception:
         capacidades_externo = 0.0
-        know_how_fw = 0.0
+    knowhow_payload = get_knowhow_resumen_payload()
+    know_how_fw = float(
+        parse_money_clp_robusto(knowhow_payload.get("kpis", {}).get("Valor know-how modelado", ""))
+        or 0.0
+    )
+    if know_how_fw <= 0:
+        try:
+            if df_val_raw.shape[0] > 6 and df_val_raw.shape[1] > 6:
+                know_how_fw = float(parse_money_clp_robusto(clean_sheet_cell(df_val_raw.iloc[6, 6])) or 0.0)
+        except Exception:
+            know_how_fw = 0.0
 
     return monto_total + capacidades_externo + know_how_fw, monto_total, capacidades_externo, know_how_fw
 
@@ -1983,9 +2236,15 @@ def render_inputs_capex_10kw_detail():
     resumen_10kw["Pct_total"] = np.where(total_10kw > 0, resumen_10kw["Monto_CLP"] / total_10kw * 100.0, 0.0)
     resumen_10kw["Monto_fmt"] = resumen_10kw["Monto_CLP"].apply(format_clp)
 
-    st.markdown("### Brecha de Inversión – Piloto 10 kW")
+    st.markdown(
+        '<div class="eng-body-title" style="font-size:21px;font-weight:800;color:#0f172a;margin:0 0 14px 0;">Brecha de Inversión – Piloto 10 kW</div>',
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("#### Distribución relativa por componente")
+    st.markdown(
+        '<div class="eng-body-title" style="font-size:15px;font-weight:600;color:#475569;margin:0 0 10px 0;">Distribución relativa por componente</div>',
+        unsafe_allow_html=True,
+    )
     if resumen_10kw.empty:
         st.info("La columna C no contiene valores numéricos válidos para el gráfico de torta.")
     else:
@@ -2015,7 +2274,10 @@ def render_inputs_capex_10kw_detail():
             font=dict(size=18, color="#0F172A"),
         )
         fig_10kw.update_layout(
-            title="Participación por componente (Columna A vs Columna C)",
+            title=dict(
+                text="",
+                x=0.02,
+            ),
             margin=dict(l=10, r=10, t=56, b=130),
             height=560,
             paper_bgcolor="rgba(0,0,0,0)",
@@ -2228,43 +2490,55 @@ def render_inputs_estado_actual_dashboard():
         """,
         unsafe_allow_html=True,
     )
-    st.markdown(
-        f"""
-        <div class="asset-hero">
-          <div class="asset-hero-grid">
-            <div>
-              <div class="asset-hero-k">Resumen patrimonial técnico</div>
-              <div class="asset-hero-t">Costo ejecutado en Activo Tecnológico Construido</div>
-              <div class="asset-hero-v">{format_clp(valor_activo_tecnologico)}</div>
-              <div class="asset-hero-p">
-                Valor consolidado del activo construido considerando inversión ejecutada,
-                capacidades externas incorporadas y know-how técnico valorizado dentro del proceso de desarrollo.
-              </div>
-            </div>
-            <div class="asset-hero-panel">
-              <div class="asset-hero-panel-h">Descomposición del valor</div>
-              <div class="asset-hero-row">
-                <div class="asset-hero-label">Inversión ejecutada en el activo</div>
-                <div class="asset-hero-value">{format_clp(monto_total)}</div>
-              </div>
-              <div class="asset-hero-row">
-                <div class="asset-hero-label">Capacidades externo</div>
-                <div class="asset-hero-value">{format_clp(capacidades_externo)}</div>
-              </div>
-              <div class="asset-hero-row">
-                <div class="asset-hero-label">Know-how FW</div>
-                <div class="asset-hero-value">{format_clp(know_how_fw)}</div>
-              </div>
-              <div class="asset-hero-total">
-                <div class="asset-hero-label">Inersión a la fecha</div>
-                <div class="asset-hero-value">{format_clp(valor_activo_tecnologico)}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    panel_rows_html = [
+        (
+            '<div class="asset-hero-row">'
+            '<div class="asset-hero-label">Inversión ejecutada en el activo</div>'
+            f'<div class="asset-hero-value">{format_clp(monto_total)}</div>'
+            "</div>"
+        )
+    ]
+    if capacidades_externo > 0:
+        panel_rows_html.append(
+            '<div class="asset-hero-row">'
+            '<div class="asset-hero-label">Capacidades externo</div>'
+            f'<div class="asset-hero-value">{format_clp(capacidades_externo)}</div>'
+            "</div>"
+        )
+    panel_rows_html.append(
+        '<div class="asset-hero-row">'
+        '<div class="asset-hero-label">Know-how técnico valorizado</div>'
+        f'<div class="asset-hero-value">{format_clp(know_how_fw)}</div>'
+        "</div>"
     )
+    panel_rows_html.append(
+        '<div class="asset-hero-total">'
+        '<div class="asset-hero-label">Inversión a la fecha</div>'
+        f'<div class="asset-hero-value">{format_clp(valor_activo_tecnologico)}</div>'
+        "</div>"
+    )
+    panel_html = "".join(panel_rows_html)
+
+    hero_html = (
+        '<div class="asset-hero">'
+        '<div class="asset-hero-grid">'
+        '<div>'
+        '<div class="asset-hero-k">Resumen patrimonial técnico</div>'
+        '<div class="asset-hero-t">Costo ejecutado en Activo Tecnológico Construido</div>'
+        f'<div class="asset-hero-v">{format_clp(valor_activo_tecnologico)}</div>'
+        '<div class="asset-hero-p">'
+        'Valor consolidado del activo construido considerando inversión ejecutada, '
+        'capacidades externas incorporadas y know-how técnico valorizado dentro del proceso de desarrollo.'
+        '</div>'
+        '</div>'
+        '<div class="asset-hero-panel">'
+        '<div class="asset-hero-panel-h">Descomposición del valor</div>'
+        f'{panel_html}'
+        '</div>'
+        '</div>'
+        '</div>'
+    )
+    st.markdown(hero_html, unsafe_allow_html=True)
 
     st.markdown("### Estado Técnico-Financiero del Piloto 10 kW")
     financial_kpis = render_inputs_financial_main_kpis(base)
@@ -2282,6 +2556,14 @@ def render_inputs_estado_actual_dashboard():
         render_inputs_project_gantt()
         render_inputs_item_analytics(base)
         render_inputs_factor_chart(base)
+    elif selected_financial_asset == "know_how_fw":
+        st.markdown("### Diseño de Ingeniería y Know-how Técnico")
+        render_inputs_knowhow_fw_detail()
+    elif selected_financial_asset == "capacidades_externas":
+        st.info(
+            "La vista de `Capacidades externas` sigue usando la valorización complementaria del modelo. "
+            "Si quieres, en el siguiente paso la conecto a una fuente detallada equivalente."
+        )
 
 
 def build_item_color_map(item_to_category: dict) -> dict:

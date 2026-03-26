@@ -86,7 +86,7 @@ DASHBOARD_FINANCIERO_CSV_URL_DEFAULT = (
 RESTANTE_PILOTO_10KW_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vQmVzOg9X7VfxAmOImXHuMvyH4dQmxbFL3DIBqOubi32jKLncgqBEBwnl6j0dXWsm5FkRAcrY4y8BD2/"
-    "pub?gid=621130518&single=true&output=csv"
+    "pub?gid=1167653476&single=true&output=csv"
 )
 BULLET_CONTEXTO_10KW_CSV_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/e/"
